@@ -16,7 +16,7 @@ import (
 
 var (
 	Version    = "1.0.0"
-	ConfigFile = "client-config.json"
+	ConfigFile = "config.json"
 	blue       = color.New(color.FgBlue).SprintFunc()
 	red        = color.New(color.FgRed).SprintFunc()
 	yellow     = color.New(color.FgYellow).SprintFunc()
