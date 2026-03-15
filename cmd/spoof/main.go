@@ -27,7 +27,6 @@ var mainCmd = &cobra.Command{
 	Use:     "spoof",
 	Version: Version,
 	Run: func(cmd *cobra.Command, args []string) {
-
 		if os.Geteuid() != 0 {
 			log.Println(yellow("Warning: Running without root privileges. Raw sockets may fail."))
 			log.Println("Run with: sudo ./spoof -c client-config.json")
