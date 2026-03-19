@@ -4,11 +4,11 @@
 >
 > این فایل نسخهٔ فارسیِ بازنویسی‌شده و کامل‌تر README پروژه است و روی نصب، ساخت، پیکربندی، اجرای سرویس، لاگ‌گیری و عیب‌یابی در **Ubuntu / Debian** تمرکز دارد. عمداً از ارائهٔ راهنمای استفاده روی شبکه‌ها یا سیاست‌هایی که تحت مالکیت یا اختیار شما نیستند خودداری شده است.
 
-[English](README.en.complete.md)
+[English](README.md)
 
 ## این پروژه چیست؟
 
-Spoof Tunnel یک تونل لایه ۳ / لایه ۴ با مدل client/server است که از raw packet، رمزنگاری و مکانیزم mutual spoofing استفاده می‌کند. README اصلی مخزن معماری کلی، لایهٔ اطمینان، مالتی‌پلکسینگ و رمزنگاری را توضیح می‌دهد و کد پروژه نیز نشان می‌دهد که برنامه به زبان Go نوشته شده و در یک باینری واحد، هر دو حالت client و server را پشتیبانی می‌کند. citeturn197365view0turn526439view2turn983978view0
+Spoof Tunnel یک تونل لایه ۳ / لایه ۴ با مدل client/server است که از raw packet، رمزنگاری و مکانیزم mutual spoofing استفاده می‌کند. README اصلی مخزن معماری کلی، لایهٔ اطمینان، مالتی‌پلکسینگ و رمزنگاری را توضیح می‌دهد و کد پروژه نیز نشان می‌دهد که برنامه به زبان Go نوشته شده و در یک باینری واحد، هر دو حالت client و server را پشتیبانی می‌کند.
 
 ## این راهنما چه چیزهایی را کامل می‌کند؟
 
@@ -30,10 +30,10 @@ README فعلی بیشتر روی توضیح معماری متمرکز است، 
 ## نکات مهم قبل از شروع
 
 1. **فقط روی سیستم‌ها و شبکه‌هایی استفاده کنید که مالک آن هستید یا مجوز تست دارید.**
-2. **Raw socket به دسترسی بالا نیاز دارد.** خود کد هم هشدار می‌دهد که اجرای بدون root ممکن است شکست بخورد. citeturn526439view2
-3. **فایل config معتبر الزامی است.** برنامه قبل از شروع، mode، transport، آدرس‌ها، فیلدهای spoof، کلیدها و چند بخش دیگر را اعتبارسنجی می‌کند. citeturn983978view0
-4. **کلاینت و سرور subcommand جدا ندارند.** حالت اجرا از داخل فایل JSON و با فیلد `mode` تعیین می‌شود و برنامه با فلگ `-config` اجرا می‌شود. مثال‌های فعلی README که از `server -c ...` یا `client -c ...` استفاده کرده‌اند با `main.go` هماهنگ نیستند. citeturn526439view2turn983978view0
-5. **ساخت کلید با `-generate-keys` انجام می‌شود.** در README فعلی این بخش هم با کد یکی نیست. citeturn526439view2
+2. **Raw socket به دسترسی بالا نیاز دارد.** خود کد هم هشدار می‌دهد که اجرای بدون root ممکن است شکست بخورد.
+3. **فایل config معتبر الزامی است.** برنامه قبل از شروع، mode، transport، آدرس‌ها، فیلدهای spoof، کلیدها و چند بخش دیگر را اعتبارسنجی می‌کند.
+4. **کلاینت و سرور subcommand جدا ندارند.** حالت اجرا از داخل فایل JSON و با فیلد `mode` تعیین می‌شود و برنامه با فلگ `-config` اجرا می‌شود. مثال‌های فعلی README که از `server -c ...` یا `client -c ...` استفاده کرده‌اند با `main.go` هماهنگ نیستند.
+5. **ساخت کلید با `-generate-keys` انجام می‌شود.** در README فعلی این بخش هم با کد یکی نیست.
 
 ---
 
@@ -64,7 +64,7 @@ README فعلی بیشتر روی توضیح معماری متمرکز است، 
 - `config.json.example` — نمونهٔ کانفیگ کلاینت
 - `server-config.json.example` — نمونهٔ کانفیگ سرور
 - `README.md` — README انگلیسی
-- `README-fa.md` — README فارسی citeturn793958view0turn526439view0turn526439view1
+- `README-fa.md` — README فارسی
 
 ---
 
@@ -78,7 +78,7 @@ sudo apt install -y git curl wget ca-certificates build-essential pkg-config \
 
 توضیح:
 
-- README و ساختار پروژه نشان می‌دهند که در پیاده‌سازی از `gopacket` و `pcap` استفاده شده است. citeturn230281view0turn197365view0
+- README و ساختار پروژه نشان می‌دهند که در پیاده‌سازی از `gopacket` و `pcap` استفاده شده است.
 - اگر Go را جداگانه و با نسخهٔ جدیدتر نصب کرده‌اید، بخش `golang-go` را می‌توانید حذف کنید.
 
 بررسی نسخه‌ها:
@@ -97,7 +97,7 @@ git clone https://github.com/ParsaKSH/spoof-tunnel.git
 cd spoof-tunnel
 ```
 
-اگر می‌خواهید نسخهٔ release مشخصی را بیلد کنید، قبل از build روی همان tag checkout کنید. صفحهٔ GitHub پروژه وجود release را نشان می‌دهد. citeturn197365view0
+اگر می‌خواهید نسخهٔ release مشخصی را بیلد کنید، قبل از build روی همان tag checkout کنید. صفحهٔ GitHub پروژه وجود release را نشان می‌دهد.
 
 ---
 
@@ -109,7 +109,7 @@ cd spoof-tunnel
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o spoof ./cmd/spoof/
 ```
 
-این همان دستور build است که در README فعلی هم آمده. citeturn197365view0turn599798view0
+این همان دستور build است که در README فعلی هم آمده.
 
 نصب اختیاری در `/usr/local/bin`:
 
@@ -123,7 +123,7 @@ sudo install -m 0755 spoof /usr/local/bin/spoof
 spoof -version
 ```
 
-فلگ `-version` در `main.go` تعریف شده است. citeturn526439view2
+فلگ `-version` در `main.go` تعریف شده است.
 
 ---
 
@@ -145,7 +145,7 @@ spoof -version
 - `private_key` = کلید خصوصی همان سمت
 - `peer_public_key` = کلید عمومی سمت مقابل
 
-این رفتار هم در `main.go` و هم در اعتبارسنجی config مشخص است. citeturn526439view2turn983978view0
+این رفتار هم در `main.go` و هم در اعتبارسنجی config مشخص است.
 
 ترتیب پیشنهادی:
 
@@ -176,7 +176,7 @@ sudo chmod 700 /etc/spoof-tunnel
 برنامه subcommand جدا برای کلاینت و سرور ندارد. حالت از فیلد `mode` داخل JSON خوانده می‌شود:
 
 - `"mode": "server"`
-- `"mode": "client"` citeturn983978view0
+- `"mode": "client"`
 
 پس روش درست اجرا این است:
 
@@ -256,11 +256,11 @@ sudo spoof -config /path/to/config.json
 چرا این فایل با `config.json.example` کمی فرق دارد:
 
 - فایل نمونهٔ مخزن خیلی فشرده است و بعضی فیلدها را صریح نشان نمی‌دهد
-- فیلد `send_rate_limit` در `PerformanceConfig` در کد وجود دارد، ولی در README فعلی عملاً مستند نشده است. citeturn526439view0turn983978view0
+- فیلد `send_rate_limit` در `PerformanceConfig` در کد وجود دارد، ولی در README فعلی عملاً مستند نشده است.
 
 ### معنی فیلدهای مهم در کلاینت
 
-- `listen.address` / `listen.port`: آدرس و پورتی که پروکسی محلی SOCKS5 روی آن باز می‌شود. اگر مقدار ندهید در کد برای حالت کلاینت `127.0.0.1:1080` پیش‌فرض می‌شود. citeturn983978view0
+- `listen.address` / `listen.port`: آدرس و پورتی که پروکسی محلی SOCKS5 روی آن باز می‌شود. اگر مقدار ندهید در کد برای حالت کلاینت `127.0.0.1:1080` پیش‌فرض می‌شود.
 - `server.address` / `server.port`: آدرس واقعی سمت سرور
 - `spoof.source_ip`: شناسهٔ spoof سمت کلاینت
 - `spoof.peer_spoof_ip`: آی‌پی spoof مورد انتظار از سمت سرور
@@ -332,7 +332,7 @@ sudo spoof -config /path/to/config.json
 
 ### نکتهٔ مهم مخصوص سرور
 
-در حالت server، اگر `client_real_ip` یا `client_real_ipv6` را نگذارید، اعتبارسنجی config خطا می‌دهد و برنامه بالا نمی‌آید. citeturn983978view0
+در حالت server، اگر `client_real_ip` یا `client_real_ipv6` را نگذارید، اعتبارسنجی config خطا می‌دهد و برنامه بالا نمی‌آید.
 
 ---
 
@@ -346,28 +346,28 @@ sudo spoof -config /path/to/config.json
 - `transport.type`
 - حداقل یکی از این‌ها: `spoof.source_ip` یا `spoof.source_ipv6`
 - `crypto.private_key`
-- `crypto.peer_public_key` citeturn983978view0
+- `crypto.peer_public_key`
 
 #### اجباری در حالت client
 
 - `server.address`
-- `server.port` citeturn983978view0
+- `server.port`
 
 #### اجباری در حالت server
 
-- `spoof.client_real_ip` یا `spoof.client_real_ipv6` citeturn983978view0
+- `spoof.client_real_ip` یا `spoof.client_real_ipv6`
 
 ### بخش transport
 
-- `transport.type`: در validation کد مقادیر `udp`، `icmp` و `raw` پذیرفته می‌شوند. README فعلی بیشتر فقط `udp` و `icmp` را پوشش داده است. citeturn983978view0turn197365view0
+- `transport.type`: در validation کد مقادیر `udp`، `icmp` و `raw` پذیرفته می‌شوند. README فعلی بیشتر فقط `udp` و `icmp` را پوشش داده است.
 - `transport.icmp_mode`: برای ICMP می‌تواند `echo` یا `reply` باشد
-- `transport.protocol_number`: فقط وقتی `type=raw` باشد استفاده می‌شود و باید بین 1 تا 255 باشد. citeturn983978view0
+- `transport.protocol_number`: فقط وقتی `type=raw` باشد استفاده می‌شود و باید بین 1 تا 255 باشد.
 
 ### بخش listen
 
 - `listen.address`: آی‌پی bind محلی
 - `listen.port`: پورت bind
-- در کد برای بسیاری از فیلدها مقدار پیش‌فرض تنظیم می‌شود؛ برای کلاینت معمولاً `127.0.0.1:1080` نقطهٔ شروع است. citeturn983978view0
+- در کد برای بسیاری از فیلدها مقدار پیش‌فرض تنظیم می‌شود؛ برای کلاینت معمولاً `127.0.0.1:1080` نقطهٔ شروع است.
 
 ### بخش performance
 
@@ -376,11 +376,11 @@ sudo spoof -config /path/to/config.json
 - `session_timeout`: timeout کلی نشست
 - `workers`: تعداد worker / goroutine پردازش
 - `read_buffer` / `write_buffer`: اندازهٔ بافرهای socket
-- `send_rate_limit`: محدودیت نرخ ارسال بر حسب packet در ثانیه؛ این فیلد در کد وجود دارد. citeturn983978view0
+- `send_rate_limit`: محدودیت نرخ ارسال بر حسب packet در ثانیه؛ این فیلد در کد وجود دارد.
 
 ### بخش reliability
 
-اگر بعضی فیلدهای reliability را نگذارید، کد برای آن‌ها مقدار پیش‌فرض می‌گذارد. citeturn983978view0
+اگر بعضی فیلدهای reliability را نگذارید، کد برای آن‌ها مقدار پیش‌فرض می‌گذارد.
 
 ### بخش FEC
 
@@ -388,11 +388,11 @@ sudo spoof -config /path/to/config.json
 
 - `data_shards >= 1`
 - `parity_shards >= 1`
-- مجموع آن‌ها نباید بیشتر از 256 شود. citeturn983978view0
+- مجموع آن‌ها نباید بیشتر از 256 شود.
 
 ### بخش keepalive
 
-اگر بعضی مقادیر را نگذارید، کد برای interval و timeout مقدار پیش‌فرض تعیین می‌کند. citeturn983978view0
+اگر بعضی مقادیر را نگذارید، کد برای interval و timeout مقدار پیش‌فرض تعیین می‌کند.
 
 ---
 
@@ -414,7 +414,7 @@ sudo spoof -config /etc/spoof-tunnel/client.json
 
 - سرور باید mode، transport و spoof source IP را در لاگ نشان بدهد
 - کلاینت باید SOCKS5 proxy، سرور مقصد و spoof source IP را در لاگ نشان بدهد
-- در صورت شروع موفق، کلاینت روی آدرس محلی تعیین‌شده یک SOCKS5 proxy باز می‌کند؛ معمولاً `127.0.0.1:1080` citeturn526439view2
+- در صورت شروع موفق، کلاینت روی آدرس محلی تعیین‌شده یک SOCKS5 proxy باز می‌کند؛ معمولاً `127.0.0.1:1080`
 
 ---
 
@@ -528,7 +528,7 @@ curl --socks5-hostname 127.0.0.1:1080 https://example.com/
 - `debug`
 - `info`
 - `warn`
-- `error` citeturn983978view0
+- `error`
 
 نمونهٔ ثبت لاگ در فایل:
 
@@ -562,11 +562,11 @@ journalctl -u spoof-tunnel-client -f
 - نداشتن `crypto.private_key`
 - نداشتن `crypto.peer_public_key`
 - نداشتن `spoof.client_real_ip` در حالت server
-- نادرست بودن syntax آی‌پی‌ها در فیلدهای listen یا spoof citeturn983978view0
+- نادرست بودن syntax آی‌پی‌ها در فیلدهای listen یا spoof
 
 ### هشدار «Running without root privileges. Raw sockets may fail.»
 
-این هشدار مستقیماً از کد می‌آید. باید با root اجرا کنید یا `CAP_NET_RAW` بدهید. citeturn526439view2
+این هشدار مستقیماً از کد می‌آید. باید با root اجرا کنید یا `CAP_NET_RAW` بدهید.
 
 ### کلاینت بالا می‌آید ولی پروکسی محلی در دسترس نیست
 
@@ -591,11 +591,11 @@ journalctl -u spoof-tunnel-client -f
 
 ### ناپایداری مرتبط با MTU
 
-اگر انتقال‌ها unstable هستند، `performance.mtu` را از `1400` به `1300` یا کمتر کاهش دهید و دوباره تست کنید. در README فعلی هم به اهمیت تنظیم MTU اشاره شده است. citeturn197365view0
+اگر انتقال‌ها unstable هستند، `performance.mtu` را از `1400` به `1300` یا کمتر کاهش دهید و دوباره تست کنید. در README فعلی هم به اهمیت تنظیم MTU اشاره شده است.
 
 ### خطای FEC
 
-اگر FEC فعال است، تعداد shardها باید مثبت باشد و مجموع آن‌ها از 256 بیشتر نشود. citeturn983978view0
+اگر FEC فعال است، تعداد shardها باید مثبت باشد و مجموع آن‌ها از 256 بیشتر نشود.
 
 ---
 
@@ -628,18 +628,18 @@ journalctl -u spoof-tunnel-client -f
 
 این نسخهٔ بازنویسی‌شده این موارد را اصلاح یا روشن می‌کند:
 
-1. **CLI صحیح برای config**: باید از `-config` استفاده شود، نه `-c`. در کد آمده `flag.String("config", ...)`. citeturn526439view2
-2. **CLI صحیح برای ساخت کلید**: باید `-generate-keys` استفاده شود، نه subcommand به نام `generate-keys`. citeturn526439view2
-3. **حالت اجرا از فایل config می‌آید**: subcommand جدا برای `server` یا `client` در کد پیاده‌سازی نشده است. citeturn526439view2turn983978view0
-4. **در حالت server، فیلد `client_real_ip` الزامی است** و باید واضح مستند شود. citeturn983978view0
-5. **transport نوع `raw` در validation وجود دارد** هرچند در README فعلی تقریباً پوشش داده نشده است. citeturn983978view0
-6. **فیلد `send_rate_limit` در کد وجود دارد** و برای کامل شدن مستندات بهتر است ذکر شود. citeturn983978view0
+1. **CLI صحیح برای config**: باید از `-config` استفاده شود، نه `-c`. در کد آمده `flag.String("config", ...)`.
+2. **CLI صحیح برای ساخت کلید**: باید `-generate-keys` استفاده شود، نه subcommand به نام `generate-keys`.
+3. **حالت اجرا از فایل config می‌آید**: subcommand جدا برای `server` یا `client` در کد پیاده‌سازی نشده است.
+4. **در حالت server، فیلد `client_real_ip` الزامی است** و باید واضح مستند شود.
+5. **transport نوع `raw` در validation وجود دارد** هرچند در README فعلی تقریباً پوشش داده نشده است.
+6. **فیلد `send_rate_limit` در کد وجود دارد** و برای کامل شدن مستندات بهتر است ذکر شود.
 
 ---
 
 ## ۱۸) لایسنس
 
-طبق صفحهٔ GitHub، این مخزن با مجوز Apache-2.0 منتشر شده است. citeturn793958view0
+طبق صفحهٔ GitHub، این مخزن با مجوز Apache-2.0 منتشر شده است.
 
 ---
 
@@ -655,3 +655,27 @@ journalctl -u spoof-tunnel-client -f
 - `README.en.complete.md`
 - `README-fa.complete.md`
 
+
+## محدودیت‌های مهم و واقع‌بینانه
+
+این پروژه را نمی‌توان صادقانه «قابل اجرا روی هر سرور» نامید. حتی با README کامل هم این محدودیت‌ها باقی می‌مانند:
+
+- بسیاری از دیتاسنترها و cloud providerها خروجی با Source IP جعلی را در سطح hypervisor، ToR switch یا ACL شبکه مسدود می‌کنند.
+- بعضی سرورها اجازهٔ raw socket یا قابلیت‌های لازم را فقط با root می‌دهند.
+- بعضی محیط‌ها `iptables` ندارند و فقط `nftables` فعال است.
+- بعضی kernel / imageها ماژول‌ها یا تنظیمات لازم برای packet capture و raw networking را ندارند.
+- اگر شبکهٔ دو طرف واقعاً spoof-capable نباشد، هیچ READMEیی به تنهایی مشکل را حل نمی‌کند.
+
+پس این README برای **Ubuntu/Debian روی سرورهایی که از نظر شبکه و دسترسی با نیازهای پروژه سازگارند** کامل و عملیاتی است، اما برای «هر سرور» تضمین مطلق نمی‌دهد.
+
+## برای اینکه README واقعاً upload-ready باشد
+
+در نسخه‌ای که برای GitHub آپلود می‌کنید، این موارد باید حتماً رعایت شود:
+
+- هیچ citation داخلی یا نشانهٔ ابزار در متن نباشد.
+- Quick Start خیلی کوتاه و copy/paste-ready در ابتدای فایل باشد.
+- بخش «Supported / Unsupported Environments» واضح باشد.
+- بخش «Before You Open an Issue» برای خطاهای رایج اضافه شود.
+- برای `iptables` و `nftables` اگر لازم است هر دو مسیر توضیح داده شوند.
+- نمونهٔ systemd unit کاملاً تست‌شده و یکدست باشد.
+- یک بخش FAQ کوتاه برای خطاهای متداول اضافه شود.
