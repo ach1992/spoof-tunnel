@@ -1,189 +1,657 @@
 # Spoof Tunnel
 
-[English](README.md)
-
-
-اسپوف تانل یک تونل پروکسی در لایه‌های ۳ و ۴ شبکه (L3/L4) است که به صورت ویژه برای دور زدن فایروال‌های پردازش عمیق بسته‌ها (DPI) و سیستم‌های مانیتورینگ stateful از طریق تکنیک **جعل آی‌پی دوطرفه (Mutual IP Spoofing)** طراحی شده است.
-
-پروتکل‌های تونل‌زنی سنتی، یک اتصال منطقی (Stateful) بین یک آی‌پی مشخص کلاینت و یک آی‌پی مشخص سرور برقرار می‌کنند. اسپوف تانل این وابستگی منطقی را با دستکاری فیلد `Source IP` درون هدر IP در هر دو سمت ارتباط کاملاً از بین می‌برد و شناسایی ترافیک را برای فایروال‌ها بسیار دشوار می‌سازد.
-
-> [!IMPORTANT]
-> 
-> هر دو سرور شما باید قابلیت ارسال پکت اسپوف شده را داشته باشند.
+> **فقط برای محیط‌های آزمایشگاهی، پژوهشی و تست روی شبکه‌هایی که مالک آن هستید یا مجوز صریح دارید.**
 >
-> برای تست این مورد، می‌توانید از دستور زیر بصورت موقتی روی هر یک از سرور های خود استفاده کنید:
->
-> iptables -t nat -A POSTROUTING -d target-ip -j SNAT --to-source spoof-ip
->
-> بعد:
->
-> ping target-ip
->
-> و در سرور مقابل از ابزاری مثل tcpdump استفاده کنید:
->
-> tcpdump icmp
->
-> اگر رسیدن پکت های اسپوف شده را مشاهده کردید، سروری که از آن پکت هارا ارسال کردید قابلیت فرستادن پکت اسپوف را دارد.
-## چگونگی شکل گیری پروژه:
+> این فایل نسخهٔ فارسیِ بازنویسی‌شده و کامل‌تر README پروژه است و روی نصب، ساخت، پیکربندی، اجرای سرویس، لاگ‌گیری و عیب‌یابی در **Ubuntu / Debian** تمرکز دارد. عمداً از ارائهٔ راهنمای استفاده روی شبکه‌ها یا سیاست‌هایی که تحت مالکیت یا اختیار شما نیستند خودداری شده است.
 
-چگونه پروژه به وجود آمد: منشأ تونل جعلی
-مفهوم تونل جعل دو طرفه در واکنش به قطعی شدید اینترنت در ایران در پی قیام خونین 8 و 9 ژانویه 2026 (18-19 دی 1404) پدیدار شد. در طول این قطع کامل از اینترنت جهانی، هدف اصلی ما مهندسی معکوس دامنه و لایه دقیق محدودیت‌های تحمیلی بود.
+[English](README.en.complete.md)
 
-پس از بررسی مسیرهای BGP برای پیشوندهای IP ایران، جزئیات شگفت‌انگیزی را مشاهده کردیم: برخلاف قطع اینترنت در افغانستان که مسیرهای BGP به سادگی ناپدید شدند، محدوده IP ایران همچنان به طور فعال در سطح جهانی اعلام می‌شد. این به شدت نشان داد که زیرساخت های فیزیکی بین المللی هنوز دست نخورده است.
+## این پروژه چیست؟
 
-متعاقباً، مشخص شد که برخی از نهادهای ایرانی وابسته به دولت توانستند آدرس‌های IP خاص خود را در لیست سفید قرار دهند و اتصال بین‌المللی خود را با موفقیت بازیابی کنند. این مشاهدات منجر به این فرضیه شد که محدودیت در لایه 3 اعمال می شود، به طور خاص فیلتر بر اساس srcIP و dstIP.
+Spoof Tunnel یک تونل لایه ۳ / لایه ۴ با مدل client/server است که از raw packet، رمزنگاری و مکانیزم mutual spoofing استفاده می‌کند. README اصلی مخزن معماری کلی، لایهٔ اطمینان، مالتی‌پلکسینگ و رمزنگاری را توضیح می‌دهد و کد پروژه نیز نشان می‌دهد که برنامه به زبان Go نوشته شده و در یک باینری واحد، هر دو حالت client و server را پشتیبانی می‌کند. citeturn197365view0turn526439view2turn983978view0
 
-این فرضیه زمانی تایید شد که متوجه شدیم چند آدرس IP خارجی منتخب (مانند محدوده‌های خاص از Hetzner) هنوز هم می‌توانند اتصالات ورودی به ایران برقرار کنند. شواهد به وضوح نشان می‌دهند که «بلاک‌ اوت» یک قطع فیزیکی نیست، بلکه یک خط‌مشی سخت‌گیرانه و مبتنی بر لیست سفید فایروال لایه ۳ است.
+## این راهنما چه چیزهایی را کامل می‌کند؟
 
-در این محیط بسیار محدود، ایده یک تونل جعلی مطرح شد. با دستکاری هدرهای IP، می‌توانیم ترافیک لیست سفید را شبیه‌سازی کنیم. با این حال، همانطور که ذاتی جعل IP است، اگر یک بسته جعلی به یک سرور ارسال شود، سرور ذاتاً پاسخ خود را به آدرس IP جعلی - نه میزبان اصلی اصلی - هدایت می کند.
+README فعلی بیشتر روی توضیح معماری متمرکز است، اما برای کاربر نهایی این بخش‌ها را کامل و عملی توضیح نمی‌دهد:
 
-بنابراین، یک جعل استاندارد یک طرفه کافی نبود. ما به یک مکانیسم جعل متقابل دو طرفه قوی نیاز داشتیم که در آن کلاینت و سرور هر دو هدر IP خود را جعل می‌کنند و نمونه‌های از پیش تعیین‌شده‌ای هستند که به خوبی از IPهای فیزیکی واقعی یکدیگر آگاه هستند و آنها را قادر می‌سازد تا علی‌رغم مسیریابی نامتقارن و جعلی، یک ارتباط منطقی برقرار کرده و حفظ کنند.
+- نصب پیش‌نیازها روی Ubuntu / Debian
+- بیلد صحیح باینری
+- ساخت کلیدها با فلگ واقعی برنامه
+- ساخت فایل کانفیگ کلاینت و سرور
+- روش درست اجرای برنامه
+- نحوهٔ دادن دسترسی لازم برای raw socket
+- اجرای برنامه با `systemd`
+- بررسی لاگ و عیب‌یابی خطاهای رایج
 
-## ۱. معماری هسته: Mutual IP Spoofing
-
-### ۱.۱ جریان داده نامتقارن (Asymmetric Data Flow)
-در این پیاده‌سازی، کلاینت و سرور توافق می‌کنند که از چه آی‌پی‌هایی به عنوان هویت جعلی استفاده کنند:
-
-* **کلاینت به سرور (Upload):** کلاینت پکت‌ها را با یک سورس آی‌پی جعلی (مانند `Client_Spoof_IP`) مونتاژ کرده و مستقیما به آی‌پی واقعی سرور می‌فرستد.
-* **سرور به کلاینت (Download):** سرور در پاسخ، پکت‌ها را با یک آی‌پی جعلی متفاوت (مانند `Server_Spoof_IP`) به عنوان مبدا ایجاد کرده و به سمت آی‌پی واقعی کلاینت ارسال می‌کند.
-
-نتیجه این کار ایجاد دو جریان ترافیک یک‌طرفه (Unidirectional) در شبکه است. فایروال‌های میانی قادر نخواهند بود این بسته های رفت و برگشتی را با هم مرتبط کنند، که این امر منجر به بای‌پس شدن کامل جداول conntrack و سیستم‌های تشخیص الگو (Fingerprinting) می‌شود.
-
-### ۱.۲ پیاده‌سازی سوکت خام (Raw Socket)
-برای تزریق پکت‌ها با هدرهای دلخواه کشف‌نشده در لایه ۳، اسپوف تانل از Raw Socketها (`AF_INET` و `SOCK_RAW`) استفاده می‌کند. تمامی فرآیند ساخت هدرهای IPv4/IPv6 و محاسبه چک‌سام (Checksum) مستقیماً در نرم‌افزار انجام می‌شود.
-
-* کتابخانه‌های `gopacket` و `pcap` برای دور زدن کامل استک شبکه سیستم‌عامل کاربرد وسیعی دارند.
-* **فیلترهای قدرتمند BPF:** برای جلوگیری از اینکه سیستم‌عامل میزبان پکت‌های ورودی که آی‌پی آن‌ها با کارت‌شبکه لوکال هم‌خوانی ندارد را دراپ کند (و یا خطای `ICMP Destination Unreachable/TCP RST` ارسال کند)، از فیلترهای قدرتمند Berkeley Packet Filter در سطح کرنل استفاده می‌شود تا پکت‌های متعلق به تونل مستقیما تحویل برنامه شوند و محدودیت‌های مسیریابی محلی دور زده شود.
-
-## ۲. پروتکل‌های انتقال (Transports)
-
-### ۲.۱ حالت ICMP (ترافیک Echo)
-تونل قادر است چانک‌های داده رمزنگاری شده را به عنوان Payload درون پکت‌های `ICMP Echo Request (Type 8)` و `ICMP Echo Reply (Type 0)` پنهان کند. در تجهیزات مانیتورینگ شبکه، این ترافیک صرفاً به عنوان یک عملیات پینگ مستمر یا ترافیک عیب‌یابی شبکه تفسیر می‌شود.
-
-### ۲.۲ حالت UDP
-ارسال به فرمت دیتانگرام‌های استاندارد UDP انجام می‌گیرد. این حالت می‌تواند از پورت‌های داینامیک مبدا استفاده کند تا ترافیک را شبیه به سرویس‌های UDP معمول (مثل DNS) در اینترنت نشان دهد.
-
-## ۳. لایه تضمین تحویل (Reliability Layer)
-بدلیل اینکه متدهای ICMP و UDP هیچگونه ضمانتی برای تحویل، ترتیب یا یکپارچگی داده ندارند، اسپوف تانل یک لایه شبیه به TCP را به صورت سفارشی در Userspace پیاده‌سازی کرده است. این لایه برای جلوگیری از شکسته شدن هندشیک‌های TLS و انتقال استریم دیتا ضروری است.
-
-* **توالی پکت‌ها و تاییدیه (ACK):** کلاینت و سرور داده‌ها را درون بلوک‌های `SeqDataPacket` قرار می‌دهند که دارای یک شماره توالی افزایشی (Sequence Number) ۴ بایتی است. گیرنده نیز دریافت کلاستری از داده‌ها را از طریق `AckPacket`ها و با استفاده از Bitmap های ۶۴ بیتی تایید می‌کند تا در مصرف پهنای باند شبکه صرفه‌جویی شود.
-* **کنترل جریان داده (بافرهای Send/Receive):** ماژول `RecvBuffer` تمامی توالی‌ها را در حافظه مدیریت می‌کند. پکت‌های خارج از نوبت (Out-of-Order) موقتاً در بافر نگه داشته می‌شوند تا پکت‌های قبلی دریافت شوند و داده‌ها کاملاً به صورت In-Order به سوکت مقصد (SOCKS5/Target) تحویل داده شوند.
-* **موتور ارسال مجدد (Retransmission Engine):** یک Goroutine اختصاصی در پس‌زمینه، هر ۱۰۰ میلی‌ثانیه وضعیت `SendBuffer` را بررسی می‌کند. هر پکتی که زمان `retransmit_timeout` آن منقضی شده باشد با الگوریتم Exponential Backoff مجددا تا سقف `max_retries` بازپخش می‌شود.
-
-## ۴. مالتی‌پلکسینگ (Session Multiplexing)
-ایجاد یک تونل کلاینت-سرور کاملا جدید برای هر کانکشن کوچک، تاخیر اولیه شدیدی (INIT Overhead) ایجاد می‌کرد. اسپوف تانل برای رفع این مشکل دارای یک ماژول اکوسیستم داخلی (Multiplexer) است.
-
-در این معماری، فقط یک "Master Session" منفرد روی لینک ناپایدار برقرار می‌ماند. هر کانکشن SOCKS5 اتصال یافته در پورت محلی کلاینت، منحصراً به یک شناسه ۴‌ بایتی مجازی `StreamID` نگاشت شده و تمامی داده‌های آن در قالب همان Master Session منتقل می‌شود.
-
-* کد `0x01 MuxStreamOpen:` به همراه `[StreamID:4][TargetLen:2][آدرس مقصد]`
-* کد `0x02 MuxStreamData:` به همراه `[StreamID:4][داده خام]`
-* کد `0x03 MuxStreamClose:` به همراه `[StreamID:4]`
-* کد `0x04 MuxStreamAck:` پاسخ سرور مبنی بر موفقیت در ریکوئست اتصال TCP به مقصد.
-
-## ۵. رمزنگاری (Cryptography)
-امنیت و لاپوشانی اطلاعات منحصرا با الگوریتم قدرتمند **ChaCha20-Poly1305 AEAD** تضمین می‌شود. ویژگی AEAD اطمینان حاصل می‌کند که هیچ حمله‌کننده از نوع MITM نتواند حتی یک بایت از ساختمان دیتای پنهان شده را رمزگشایی کرده یا تغییری در آن ایجاد کند (در غیر اینصورت کانکشن بلافاصله دراپ می‌شود).
-
-مدیریت Nonce‌های تصادفی در ابتدای نشست (Session) مانع از وقوع حملات Replay (بازپخش بسته‌های ضبط شده) می‌گردد، و احراز هویت تونل تنها از طریق کلید استاتیک Base64 مشترک امکان پذیر خواهد بود.
+این فایل برای پوشش همین کمبودها نوشته شده است.
 
 ---
 
-## راهنمای استفاده
+## نکات مهم قبل از شروع
 
-### ۱. بیلد کردن باینری
-اسپوف تانل به زبان Go نوشته شده است و توسط ابزار استاندارد این زبان کامپایل می‌شود:
+1. **فقط روی سیستم‌ها و شبکه‌هایی استفاده کنید که مالک آن هستید یا مجوز تست دارید.**
+2. **Raw socket به دسترسی بالا نیاز دارد.** خود کد هم هشدار می‌دهد که اجرای بدون root ممکن است شکست بخورد. citeturn526439view2
+3. **فایل config معتبر الزامی است.** برنامه قبل از شروع، mode، transport، آدرس‌ها، فیلدهای spoof، کلیدها و چند بخش دیگر را اعتبارسنجی می‌کند. citeturn983978view0
+4. **کلاینت و سرور subcommand جدا ندارند.** حالت اجرا از داخل فایل JSON و با فیلد `mode` تعیین می‌شود و برنامه با فلگ `-config` اجرا می‌شود. مثال‌های فعلی README که از `server -c ...` یا `client -c ...` استفاده کرده‌اند با `main.go` هماهنگ نیستند. citeturn526439view2turn983978view0
+5. **ساخت کلید با `-generate-keys` انجام می‌شود.** در README فعلی این بخش هم با کد یکی نیست. citeturn526439view2
+
+---
+
+## سیستم‌عامل هدف
+
+این راهنما برای این نسخه‌ها نوشته شده است:
+
+- Ubuntu 20.04+
+- Ubuntu 22.04+
+- Ubuntu 24.04+
+- Debian 11+
+- Debian 12+
+
+پیش‌نیاز کلی:
+
+- لینوکس 64 بیتی
+- دسترسی root یا امکان دادن capability به باینری
+- نصب Go برای بیلد از سورس
+- وجود `systemd` اگر بخواهید سرویس دائمی بسازید
+
+---
+
+## ساختار مهم مخزن
+
+فایل‌های مهم داخل پروژه:
+
+- `cmd/spoof/main.go` — نقطهٔ ورود برنامه و فلگ‌های CLI
+- `config.json.example` — نمونهٔ کانفیگ کلاینت
+- `server-config.json.example` — نمونهٔ کانفیگ سرور
+- `README.md` — README انگلیسی
+- `README-fa.md` — README فارسی citeturn793958view0turn526439view0turn526439view1
+
+---
+
+## ۱) نصب پیش‌نیازها روی Ubuntu / Debian
+
+```bash
+sudo apt update
+sudo apt install -y git curl wget ca-certificates build-essential pkg-config \
+  golang-go libpcap-dev tcpdump jq systemd
+```
+
+توضیح:
+
+- README و ساختار پروژه نشان می‌دهند که در پیاده‌سازی از `gopacket` و `pcap` استفاده شده است. citeturn230281view0turn197365view0
+- اگر Go را جداگانه و با نسخهٔ جدیدتر نصب کرده‌اید، بخش `golang-go` را می‌توانید حذف کنید.
+
+بررسی نسخه‌ها:
+
+```bash
+go version
+uname -a
+```
+
+---
+
+## ۲) دریافت سورس پروژه
+
+```bash
+git clone https://github.com/ParsaKSH/spoof-tunnel.git
+cd spoof-tunnel
+```
+
+اگر می‌خواهید نسخهٔ release مشخصی را بیلد کنید، قبل از build روی همان tag checkout کنید. صفحهٔ GitHub پروژه وجود release را نشان می‌دهد. citeturn197365view0
+
+---
+
+## ۳) بیلد کردن باینری
+
+برای Linux AMD64:
 
 ```bash
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o spoof ./cmd/spoof/
 ```
 
-### ۲. تولید کلید‌های رمزنگاری
-پیش از راه‌اندازی، باید یک جفت کلید خصوصی/عمومی (Private/Public Keys) با فرمت Base64 برای کلاینت و سرور اختصاصیِ خود ایجاد کنید.
+این همان دستور build است که در README فعلی هم آمده. citeturn197365view0turn599798view0
+
+نصب اختیاری در `/usr/local/bin`:
 
 ```bash
-./spoof keygen
+sudo install -m 0755 spoof /usr/local/bin/spoof
 ```
-*کلید Private مشترک خود و Public Key تولید شده را در جای امنی یادداشت کنید.* کلید عمومی سرور (Server Public Key) را باید درون فیلد `peer_public_key` کانفیگ کلاینت، و کلید عمومی کلاینت را درون همان فیلد در کانفیگ سرور قرار دهید.
 
-### ۳. اجرای سرویس
-> **نکته بسیار مهم:** گوش دادن روی سوکت‌های خام (Raw Sockets) در لینوکس نیازمند سطح دسترسی سیستمی بالا است. باید باینری‌ها را قطعاً به همراه `sudo` و تحت یوزر Root ران کنید (یا دسترسی `CAP_NET_RAW` به آن بدهید).
+بررسی اجرای برنامه:
 
-**در سمت سرور:**
 ```bash
-sudo ./spoof -c server-config.json
+spoof -version
 ```
 
-**در سمت کلاینت:**
-```bash
-sudo ./spoof -c client-config.json
-```
-به محض اتصال موفقیت آمیز، کلاینت یک پروکسی SOCKS5 روی پورت `127.0.0.1:1080` (به صورت پیش‌فرض) باز خواهد کرد که ترافیک آن کاملا امن و از طریق تونل اسپوف شده مسیریابی می‌شود.
+فلگ `-version` در `main.go` تعریف شده است. citeturn526439view2
 
 ---
 
-# تنظیمات کلاینت
+## ۴) ساخت کلیدها به روش درست
 
-| بخش | کلید | نوع | توضیح |
-|----|----|----|----|
-| mode | mode | string | باید "client" باشد |
-| transport | type | string | "udp" یا "icmp" (نوع ترنسپورت تونل) |
-| transport | icmp_mode | string | "echo" یا "reply" (فقط برای ICMP) |
-| transport | protocol_number | int | 0 (پیش‌فرض، برای ICMP/UDP استفاده نمی‌شود) |
-| listen | address | string | آدرس گوش دادن SOCKS5 (مثلاً 127.0.0.1) |
-| listen | port | int | پورت SOCKS5 (مثلاً 1080) |
-| server | address | string | IP واقعی سرور برای ارسال پکت‌های تونل |
-| server | port | int | پورت سرور (برای UDP) |
-| spoof | source_ip | string | IP جعلی که کلاینت هنگام ارسال پکت استفاده می‌کند |
-| spoof | peer_spoof_ip | string | IP جعلی مورد انتظار از سمت سرور (برای فیلتر BPF) |
-| crypto | private_key | string | کلید خصوصی Base64 کلاینت |
-| crypto | peer_public_key | string | کلید عمومی Base64 سرور |
-| performance | buffer_size | int | اندازه بافر اصلی پکت |
-| performance | mtu | int | حداکثر اندازه payload قبل از encapsulation (مثلاً 1400) |
-| performance | session_timeout | int | زمان timeout جلسه اصلی (ثانیه) |
-| performance | workers | int | تعداد goroutineهای پردازش پکت |
-| performance | read_buffer | int | اندازه بافر خواندن سوکت کرنل |
-| performance | write_buffer | int | اندازه بافر نوشتن سوکت کرنل |
-| fec | enabled | bool | فعال‌سازی Forward Error Correction (Reed-Solomon) |
-| fec | data_shards | int | تعداد شاردهای داده |
-| fec | parity_shards | int | تعداد شاردهای parity (قابل بازیابی تا این تعداد پکت از دست رفته) |
-| logging | level | string | سطح لاگ ("info"، "debug"، "warn"، "error") |
-| logging | file | string | مسیر فایل لاگ (خالی = stdout) |
+روی هر سمت یک بار اجرا کنید:
 
-# تنظیمات سرور
+```bash
+./spoof -generate-keys
+```
 
-| بخش | کلید | نوع | توضیح |
-|----|----|----|----|
-| mode | mode | string | باید "server" باشد |
-| transport | type | string | "udp" یا "icmp" (نوع ترنسپورت تونل) |
-| transport | icmp_mode | string | "echo" یا "reply" (فقط برای ICMP) |
-| transport | protocol_number | int | 0 (پیش‌فرض، برای ICMP/UDP استفاده نمی‌شود) |
-| listen | address | string | IP برای گوش دادن تونل (مثلاً 0.0.0.0) |
-| listen | port | int | پورت گوش دادن UDP (برای ICMP نادیده گرفته می‌شود) |
-| spoof | source_ip | string | IP جعلی که سرور هنگام ارسال پکت استفاده می‌کند |
-| spoof | source_ipv6 | string | نسخه IPv6 از source_ip (در صورت نیاز) |
-| spoof | peer_spoof_ip | string | IP جعلی مورد انتظار از سمت کلاینت (برای فیلتر BPF) |
-| spoof | peer_spoof_ipv6 | string | نسخه IPv6 از peer_spoof_ip |
-| spoof | client_real_ip | string | IP واقعی کلاینت (سرور پاسخ‌ها را به این IP می‌فرستد) |
-| spoof | client_real_ipv6 | string | نسخه IPv6 از client_real_ip |
-| crypto | private_key | string | کلید خصوصی Base64 سرور |
-| crypto | peer_public_key | string | کلید عمومی Base64 کلاینت |
-| performance | buffer_size | int | اندازه بافر اصلی پکت |
-| performance | mtu | int | حداکثر اندازه payload قبل از encapsulation |
-| performance | session_timeout | int | زمان timeout جلسه اصلی (ثانیه) |
-| performance | workers | int | تعداد worker برای پردازش پکت |
-| performance | read_buffer | int | اندازه بافر خواندن سوکت کرنل |
-| performance | write_buffer | int | اندازه بافر نوشتن سوکت کرنل |
-| reliability | enabled | bool | فعال‌سازی لایه reliability شبیه TCP |
-| reliability | window_size | int | حداکثر تعداد پکت‌های تأیید نشده در حال ارسال |
-| reliability | retransmit_timeout_ms | int | زمان پایه برای ارسال مجدد پکت (میلی‌ثانیه) |
-| reliability | max_retries | int | حداکثر تعداد تلاش مجدد برای هر پکت |
-| reliability | ack_interval_ms | int | فاصله زمانی ارسال ACK (میلی‌ثانیه) |
-| fec | enabled | bool | فعال‌سازی Forward Error Correction |
-| fec | data_shards | int | تعداد شاردهای داده |
-| fec | parity_shards | int | تعداد شاردهای parity |
-| keepalive | enabled | bool | فعال‌سازی ارسال keepalive |
-| keepalive | interval_seconds | int | فاصله ارسال keepalive (ثانیه) |
-| keepalive | timeout_seconds | int | زمان قطع جلسه در صورت عدم فعالیت |
-| logging | level | string | سطح لاگ ("info"، "debug"، "warn"، "error") |
-| logging | file | string | مسیر فایل لاگ (خالی = stdout) |
+خروجی شامل این موارد است:
 
-توسعه داده شده و تست شده در قطعی کامل اینترنت ایران پس از قیام خونین 18 و 19 دی
+- **Private Key** برای همان ماشین
+- **Public Key** برای اشتراک با سمت مقابل
+
+قاعدهٔ استفاده از کلیدها:
+
+- `private_key` = کلید خصوصی همان سمت
+- `peer_public_key` = کلید عمومی سمت مقابل
+
+این رفتار هم در `main.go` و هم در اعتبارسنجی config مشخص است. citeturn526439view2turn983978view0
+
+ترتیب پیشنهادی:
+
+1. روی سرور کلید بسازید.
+2. روی کلاینت کلید بسازید.
+3. فقط public key ها را بین دو طرف ردوبدل کنید.
+4. private key هر سمت فقط روی همان میزبان بماند.
+
+---
+
+## ۵) ساخت دایرکتوری برای config و log
+
+```bash
+sudo mkdir -p /etc/spoof-tunnel
+sudo mkdir -p /var/log/spoof-tunnel
+sudo chmod 700 /etc/spoof-tunnel
+```
+
+نام‌گذاری پیشنهادی:
+
+- سرور: `/etc/spoof-tunnel/server.json`
+- کلاینت: `/etc/spoof-tunnel/client.json`
+
+---
+
+## ۶) منطق انتخاب حالت اجرا
+
+برنامه subcommand جدا برای کلاینت و سرور ندارد. حالت از فیلد `mode` داخل JSON خوانده می‌شود:
+
+- `"mode": "server"`
+- `"mode": "client"` citeturn983978view0
+
+پس روش درست اجرا این است:
+
+```bash
+sudo ./spoof -config /path/to/config.json
+```
+
+یا اگر باینری را global نصب کرده‌اید:
+
+```bash
+sudo spoof -config /path/to/config.json
+```
+
+---
+
+## ۷) نمونهٔ کامل کانفیگ کلاینت
+
+فایل `config.json.example` در مخزن وجود دارد، اما نسخهٔ فشرده و کم‌توضیحی است. نسخهٔ زیر برای شروع خواناتر است و JSON معتبر هم باقی می‌ماند:
+
+```json
+{
+  "mode": "client",
+  "transport": {
+    "type": "udp",
+    "icmp_mode": "echo",
+    "protocol_number": 0
+  },
+  "listen": {
+    "address": "127.0.0.1",
+    "port": 1080
+  },
+  "server": {
+    "address": "SERVER_REAL_IP",
+    "port": 8080
+  },
+  "spoof": {
+    "source_ip": "CLIENT_SPOOF_IP",
+    "peer_spoof_ip": "SERVER_SPOOF_IP"
+  },
+  "crypto": {
+    "private_key": "CLIENT_PRIVATE_KEY_BASE64",
+    "peer_public_key": "SERVER_PUBLIC_KEY_BASE64"
+  },
+  "performance": {
+    "buffer_size": 65535,
+    "mtu": 1400,
+    "session_timeout": 600,
+    "workers": 4,
+    "read_buffer": 4194304,
+    "write_buffer": 4194304,
+    "send_rate_limit": 1000
+  },
+  "reliability": {
+    "enabled": true,
+    "window_size": 128,
+    "retransmit_timeout_ms": 300,
+    "max_retries": 5,
+    "ack_interval_ms": 50
+  },
+  "fec": {
+    "enabled": false,
+    "data_shards": 10,
+    "parity_shards": 3
+  },
+  "keepalive": {
+    "enabled": true,
+    "interval_seconds": 30,
+    "timeout_seconds": 120
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/spoof-tunnel/client.log"
+  }
+}
+```
+
+چرا این فایل با `config.json.example` کمی فرق دارد:
+
+- فایل نمونهٔ مخزن خیلی فشرده است و بعضی فیلدها را صریح نشان نمی‌دهد
+- فیلد `send_rate_limit` در `PerformanceConfig` در کد وجود دارد، ولی در README فعلی عملاً مستند نشده است. citeturn526439view0turn983978view0
+
+### معنی فیلدهای مهم در کلاینت
+
+- `listen.address` / `listen.port`: آدرس و پورتی که پروکسی محلی SOCKS5 روی آن باز می‌شود. اگر مقدار ندهید در کد برای حالت کلاینت `127.0.0.1:1080` پیش‌فرض می‌شود. citeturn983978view0
+- `server.address` / `server.port`: آدرس واقعی سمت سرور
+- `spoof.source_ip`: شناسهٔ spoof سمت کلاینت
+- `spoof.peer_spoof_ip`: آی‌پی spoof مورد انتظار از سمت سرور
+- `crypto.private_key`: کلید خصوصی خود کلاینت
+- `crypto.peer_public_key`: کلید عمومی سرور
+
+---
+
+## ۸) نمونهٔ کامل کانفیگ سرور
+
+در مخزن فایل `server-config.json.example` هم وجود دارد. نسخهٔ تمیزتر و مناسب شروع:
+
+```json
+{
+  "mode": "server",
+  "transport": {
+    "type": "icmp",
+    "icmp_mode": "echo",
+    "protocol_number": 0
+  },
+  "listen": {
+    "address": "0.0.0.0",
+    "port": 8080
+  },
+  "spoof": {
+    "source_ip": "SERVER_SPOOF_IP",
+    "source_ipv6": "",
+    "peer_spoof_ip": "CLIENT_SPOOF_IP",
+    "peer_spoof_ipv6": "",
+    "client_real_ip": "CLIENT_REAL_IP",
+    "client_real_ipv6": ""
+  },
+  "crypto": {
+    "private_key": "SERVER_PRIVATE_KEY_BASE64",
+    "peer_public_key": "CLIENT_PUBLIC_KEY_BASE64"
+  },
+  "performance": {
+    "buffer_size": 131072,
+    "mtu": 1400,
+    "session_timeout": 600,
+    "workers": 16,
+    "read_buffer": 16777216,
+    "write_buffer": 16777216,
+    "send_rate_limit": 1000
+  },
+  "reliability": {
+    "enabled": true,
+    "window_size": 128,
+    "retransmit_timeout_ms": 300,
+    "max_retries": 5,
+    "ack_interval_ms": 50
+  },
+  "fec": {
+    "enabled": true,
+    "data_shards": 10,
+    "parity_shards": 3
+  },
+  "keepalive": {
+    "enabled": true,
+    "interval_seconds": 30,
+    "timeout_seconds": 120
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/spoof-tunnel/server.log"
+  }
+}
+```
+
+### نکتهٔ مهم مخصوص سرور
+
+در حالت server، اگر `client_real_ip` یا `client_real_ipv6` را نگذارید، اعتبارسنجی config خطا می‌دهد و برنامه بالا نمی‌آید. citeturn983978view0
+
+---
+
+## ۹) مرجع کامل فیلدهای کانفیگ
+
+### فیلدهای اجباری
+
+#### اجباری روی هر دو سمت
+
+- `mode`
+- `transport.type`
+- حداقل یکی از این‌ها: `spoof.source_ip` یا `spoof.source_ipv6`
+- `crypto.private_key`
+- `crypto.peer_public_key` citeturn983978view0
+
+#### اجباری در حالت client
+
+- `server.address`
+- `server.port` citeturn983978view0
+
+#### اجباری در حالت server
+
+- `spoof.client_real_ip` یا `spoof.client_real_ipv6` citeturn983978view0
+
+### بخش transport
+
+- `transport.type`: در validation کد مقادیر `udp`، `icmp` و `raw` پذیرفته می‌شوند. README فعلی بیشتر فقط `udp` و `icmp` را پوشش داده است. citeturn983978view0turn197365view0
+- `transport.icmp_mode`: برای ICMP می‌تواند `echo` یا `reply` باشد
+- `transport.protocol_number`: فقط وقتی `type=raw` باشد استفاده می‌شود و باید بین 1 تا 255 باشد. citeturn983978view0
+
+### بخش listen
+
+- `listen.address`: آی‌پی bind محلی
+- `listen.port`: پورت bind
+- در کد برای بسیاری از فیلدها مقدار پیش‌فرض تنظیم می‌شود؛ برای کلاینت معمولاً `127.0.0.1:1080` نقطهٔ شروع است. citeturn983978view0
+
+### بخش performance
+
+- `buffer_size`: اندازهٔ بافر اصلی بسته‌ها
+- `mtu`: اندازهٔ payload قبل از encapsulation؛ اگر fragmentation دیدید مقدار را کمتر کنید
+- `session_timeout`: timeout کلی نشست
+- `workers`: تعداد worker / goroutine پردازش
+- `read_buffer` / `write_buffer`: اندازهٔ بافرهای socket
+- `send_rate_limit`: محدودیت نرخ ارسال بر حسب packet در ثانیه؛ این فیلد در کد وجود دارد. citeturn983978view0
+
+### بخش reliability
+
+اگر بعضی فیلدهای reliability را نگذارید، کد برای آن‌ها مقدار پیش‌فرض می‌گذارد. citeturn983978view0
+
+### بخش FEC
+
+اگر `fec.enabled=true` باشد:
+
+- `data_shards >= 1`
+- `parity_shards >= 1`
+- مجموع آن‌ها نباید بیشتر از 256 شود. citeturn983978view0
+
+### بخش keepalive
+
+اگر بعضی مقادیر را نگذارید، کد برای interval و timeout مقدار پیش‌فرض تعیین می‌کند. citeturn983978view0
+
+---
+
+## ۱۰) اول به صورت دستی اجرا کنید
+
+### سرور
+
+```bash
+sudo spoof -config /etc/spoof-tunnel/server.json
+```
+
+### کلاینت
+
+```bash
+sudo spoof -config /etc/spoof-tunnel/client.json
+```
+
+انتظار از رفتار برنامه:
+
+- سرور باید mode، transport و spoof source IP را در لاگ نشان بدهد
+- کلاینت باید SOCKS5 proxy، سرور مقصد و spoof source IP را در لاگ نشان بدهد
+- در صورت شروع موفق، کلاینت روی آدرس محلی تعیین‌شده یک SOCKS5 proxy باز می‌کند؛ معمولاً `127.0.0.1:1080` citeturn526439view2
+
+---
+
+## ۱۱) اجرا بدون sudo کامل با استفاده از capability
+
+اگر نخواهید هر بار با `sudo` اجرا کنید:
+
+```bash
+sudo setcap cap_net_raw+ep /usr/local/bin/spoof
+getcap /usr/local/bin/spoof
+```
+
+نمونهٔ خروجی:
+
+```bash
+/usr/local/bin/spoof cap_net_raw=ep
+```
+
+اگر در محیط شما همچنان privilege بیشتری برای packet handling لازم باشد، اجرای مستقیم با root ساده‌تر است.
+
+---
+
+## ۱۲) فایل‌های نمونهٔ `systemd`
+
+### سرویس سرور
+
+فایل `/etc/systemd/system/spoof-tunnel-server.service`:
+
+```ini
+[Unit]
+Description=Spoof Tunnel Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/spoof -config /etc/spoof-tunnel/server.json
+Restart=always
+RestartSec=3
+User=root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### سرویس کلاینت
+
+فایل `/etc/systemd/system/spoof-tunnel-client.service`:
+
+```ini
+[Unit]
+Description=Spoof Tunnel Client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/spoof -config /etc/spoof-tunnel/client.json
+Restart=always
+RestartSec=3
+User=root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+```
+
+فعال‌سازی و اجرا:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now spoof-tunnel-server
+# یا
+sudo systemctl enable --now spoof-tunnel-client
+```
+
+بررسی وضعیت:
+
+```bash
+systemctl status spoof-tunnel-server
+journalctl -u spoof-tunnel-server -f
+```
+
+---
+
+## ۱۳) استفاده از SOCKS5 محلی روی کلاینت
+
+بعد از بالا آمدن کلاینت، برنامه‌ها می‌توانند از SOCKS5 محلی استفاده کنند.
+
+نمونه با `curl`:
+
+```bash
+curl --socks5-hostname 127.0.0.1:1080 https://example.com/
+```
+
+اگر `listen.address` یا `listen.port` را تغییر داده‌اید، همان endpoint جدید را استفاده کنید.
+
+---
+
+## ۱۴) لاگ‌گیری
+
+سطوح لاگ معتبر:
+
+- `debug`
+- `info`
+- `warn`
+- `error` citeturn983978view0
+
+نمونهٔ ثبت لاگ در فایل:
+
+```json
+"logging": {
+  "level": "debug",
+  "file": "/var/log/spoof-tunnel/client.log"
+}
+```
+
+اگر `file` خالی باشد، خروجی لاگ روی stdout/stderr می‌ماند.
+
+دستورهای مفید:
+
+```bash
+tail -f /var/log/spoof-tunnel/client.log
+tail -f /var/log/spoof-tunnel/server.log
+journalctl -u spoof-tunnel-client -f
+```
+
+---
+
+## ۱۵) عیب‌یابی
+
+### برنامه بلافاصله با خطای config خارج می‌شود
+
+اعتبارسنجی config سخت‌گیرانه است. خطاهای رایج:
+
+- `mode` نامعتبر
+- نداشتن `server.address` در حالت client
+- نداشتن `crypto.private_key`
+- نداشتن `crypto.peer_public_key`
+- نداشتن `spoof.client_real_ip` در حالت server
+- نادرست بودن syntax آی‌پی‌ها در فیلدهای listen یا spoof citeturn983978view0
+
+### هشدار «Running without root privileges. Raw sockets may fail.»
+
+این هشدار مستقیماً از کد می‌آید. باید با root اجرا کنید یا `CAP_NET_RAW` بدهید. citeturn526439view2
+
+### کلاینت بالا می‌آید ولی پروکسی محلی در دسترس نیست
+
+این موارد را چک کنید:
+
+- `mode` واقعاً `client` باشد
+- `listen.address` و `listen.port` درست باشند
+- process بعد از startup فوراً exit نکرده باشد
+
+### خطای مربوط به کلیدها
+
+اگر parse کلیدها خطا داد، دوباره اجرا کنید:
+
+```bash
+./spoof -generate-keys
+```
+
+و مطمئن شوید هر سمت:
+
+- private key خودش را دارد
+- public key سمت مقابل را در `peer_public_key` گذاشته است
+
+### ناپایداری مرتبط با MTU
+
+اگر انتقال‌ها unstable هستند، `performance.mtu` را از `1400` به `1300` یا کمتر کاهش دهید و دوباره تست کنید. در README فعلی هم به اهمیت تنظیم MTU اشاره شده است. citeturn197365view0
+
+### خطای FEC
+
+اگر FEC فعال است، تعداد shardها باید مثبت باشد و مجموع آن‌ها از 256 بیشتر نشود. citeturn983978view0
+
+---
+
+## ۱۶) چک‌لیست عملیاتی
+
+### چک‌لیست سرور
+
+- [ ] Go و پیش‌نیازها نصب شده‌اند
+- [ ] باینری build یا install شده است
+- [ ] private key سرور ساخته شده است
+- [ ] public key کلاینت در `peer_public_key` قرار گرفته است
+- [ ] `mode=server` تنظیم شده است
+- [ ] `spoof.client_real_ip` پر شده است
+- [ ] مسیر log قابل نوشتن است
+- [ ] برنامه با root یا capability مناسب اجرا می‌شود
+
+### چک‌لیست کلاینت
+
+- [ ] باینری build یا install شده است
+- [ ] private key کلاینت ساخته شده است
+- [ ] public key سرور در `peer_public_key` قرار گرفته است
+- [ ] `mode=client` تنظیم شده است
+- [ ] `server.address` و `server.port` تنظیم شده‌اند
+- [ ] SOCKS5 محلی تنظیم شده است
+- [ ] برنامه با root یا capability مناسب اجرا می‌شود
+
+---
+
+## ۱۷) ایرادهای مستندات فعلی که در این نسخه اصلاح شدند
+
+این نسخهٔ بازنویسی‌شده این موارد را اصلاح یا روشن می‌کند:
+
+1. **CLI صحیح برای config**: باید از `-config` استفاده شود، نه `-c`. در کد آمده `flag.String("config", ...)`. citeturn526439view2
+2. **CLI صحیح برای ساخت کلید**: باید `-generate-keys` استفاده شود، نه subcommand به نام `generate-keys`. citeturn526439view2
+3. **حالت اجرا از فایل config می‌آید**: subcommand جدا برای `server` یا `client` در کد پیاده‌سازی نشده است. citeturn526439view2turn983978view0
+4. **در حالت server، فیلد `client_real_ip` الزامی است** و باید واضح مستند شود. citeturn983978view0
+5. **transport نوع `raw` در validation وجود دارد** هرچند در README فعلی تقریباً پوشش داده نشده است. citeturn983978view0
+6. **فیلد `send_rate_limit` در کد وجود دارد** و برای کامل شدن مستندات بهتر است ذکر شود. citeturn983978view0
+
+---
+
+## ۱۸) لایسنس
+
+طبق صفحهٔ GitHub، این مخزن با مجوز Apache-2.0 منتشر شده است. citeturn793958view0
+
+---
+
+## ۱۹) نام پیشنهادی فایل‌ها برای آپلود روی GitHub
+
+اگر می‌خواهید READMEهای فعلی را در fork خودتان جایگزین کنید:
+
+- `README.md` → نسخهٔ انگلیسی
+- `README-fa.md` → نسخهٔ فارسی
+
+اگر می‌خواهید اول جداگانه بررسی کنید و بعد جایگزین کنید:
+
+- `README.en.complete.md`
+- `README-fa.complete.md`
+

@@ -1,184 +1,658 @@
 # Spoof Tunnel
-[Persian-فارسی](README-fa.md)
 
-Spoof Tunnel is a Layer 3/Layer 4 tunneling proxy designed to bypass Deep Packet Inspection (DPI) and strict stateful firewalls through **mutual bidirectional IP spoofing**. 
+> **For authorized lab, research, and network-owner testing only.**
+>
+> This document is a cleaned-up and expanded English README for the project. It focuses on installation, configuration, service management, logging, and troubleshooting on **Ubuntu/Debian**. It intentionally avoids guidance for using the software against networks or policies you do not own or administer.
 
-Unlike traditional tunneling protocols that establish a stateful connection between a fixed client IP and a fixed server IP, Spoof Tunnel completely decouples the logical session from the physical network addresses by forging the `Source IP` field in the IP header at both endpoints.
+[فارسی / Persian](README-fa.complete.md)
 
-> [!IMPORTANT]
-> Both your servers must be able to send spoofed packets.
-> 
-> To test this, you can use the following command temporarily on any of your servers:
-> 
-> iptables -t nat -A POSTROUTING -d target-ip -j SNAT --to-source spoof-ip
-> 
-> then:
-> 
-> ping target-ip
-> 
-> and use a tool like tcpdump on the opposite server:
-> 
-> tcpdump icmp
-> 
-> if you see the spoofed packets, means your source side can send spoofed packet.
+## What this project is
 
-### How the Project Came to Be: The Origin of Spoof Tunnel
-The concept of a bidirectional spoofing tunnel emerged in response to the severe internet blackout in Iran following the bloody uprising on January 8 and 9, 2026 (18-19 Dey 1404). During this complete disconnection from the global internet, our primary objective was to reverse-engineer the exact scope and layer of the imposed restrictions.
+Spoof Tunnel is a Layer 3 / Layer 4 tunneling proxy that uses raw packets, encrypted transport, and a client/server model. The repository README explains the design goals, the mutual spoofing model, the reliability layer, multiplexing, and the cryptography used by the tunnel. The implementation is written in Go and includes separate client and server modes in a single binary. citeturn197365view0turn526439view2turn983978view0
 
-Upon investigating the BGP routes for Iranian IP prefixes, we observed a surprising detail: unlike the internet shutdown in Afghanistan where BGP routes simply disappeared, Iran's IP ranges were still actively being announced globally. This strongly indicated that the international physical infrastructure was still intact.
+## What this guide adds
 
-Subsequently, it became apparent that certain government-affiliated Iranian entities were able to whitelist their specific IP addresses, successfully restoring their international connectivity. This observation led to the hypothesis that the restriction was being enforced at Layer 3, specifically filtering based on srcIP and dstIP.
+The original README explains the architecture, but it does not fully walk a new user through:
 
-This hypothesis was definitively confirmed when we discovered that a select few foreign IP addresses (such as specific ranges from Hetzner) could still establish inbound connections to Iran. The evidence clearly demonstrated that the "blackout" was not a physical severance, but rather a stringent, whitelist-based Layer 3 firewall policy.
+- installing dependencies on Ubuntu/Debian
+- building the binary correctly
+- generating keys with the actual CLI flags used by the code
+- preparing client and server JSON configuration files
+- starting the program correctly
+- giving the binary the privileges raw sockets require
+- running it with `systemd`
+- checking logs and troubleshooting startup problems
 
-In this highly restricted environment, the idea of a spoofing tunnel was conceived. By manipulating the IP headers, we could simulate whitelisted traffic. However, as is inherent to IP spoofing, if a spoofed packet is sent to a server, the server will inherently route its reply back to the spoofed IP address—not the actual origin host.
-
-Therefore, a standard unidirectional spoof was insufficient. We required a robust bidirectional mutual spoofing mechanism where both the client and the server forge their IP headers and are predetermined instances well-aware of each other's actual physical IPs, enabling them to establish and maintain a logical connection despite the asymmetrical, forged routing.
-
-
-## 1. Core Architecture: Mutual IP Spoofing
-
-### 1.1 Asymmetric Data Flow
-In a typical scenario, the client and server agree on specific IP addresses to spoof:
-
-* **Client → Server (Upload):** The client transmits packets with a forged source IP (e.g., `Client_Spoof_IP`) addressed to the server's actual listening IP.
-* **Server → Client (Download):** The server responds by transmitting packets with a forged source IP (e.g., `Server_Spoof_IP`) addressed to the client's actual IP.
-
-This creates a scenario where intermediate firewalls see unidirectional UDP or ICMP flows that do not logically match any active state mappings, effectively bypassing connection tracking tables (conntrack) and traffic fingerprinting.
-
-### 1.2 Raw Socket Implementation
-To inject packets with arbitrarily modified Layer 3 headers, Spoof Tunnel utilizes raw sockets (`AF_INET`, `SOCK_RAW`). It constructs the entire IPv4/IPv6 header manually, calculating the corresponding IP checksums in software.
-
-* `gopacket` and `pcap` are heavily utilized to bypass the host kernel's network stack.
-* **BPF Filters:** To prevent the host OS from dropping inbound spoofed packets or responding with `ICMP Destination Unreachable` / `TCP RST`, an aggressive Berkeley Packet Filter (BPF) limits the capture scope strictly to the tunnel's expected flow, bypassing local routing limits.
-
-## 2. Supported Transports
-
-### 2.1 ICMP (Echo Mode)
-The tunnel encapsulates encrypted chunks inside standard `ICMP Echo Request (Type 8)` and `ICMP Echo Reply (Type 0)` packets. To network middleboxes, the traffic appears as benign ping sweeps or monitoring traffic.
-
-### 2.2 UDP
-Standard UDP datagrams are utilized with dynamically shiftable source ports. The protocol mimics connectionless DNS or custom UDP application patterns.
-
-## 3. The Reliability Layer
-Because ICMP and UDP provide no delivery guarantees, Spoof Tunnel implements a custom TCP-like reliability layer in user space. This is mandatory for maintaining stable TLS handshakes and in-order stream delivery.
-
-* **Packet Sequencing and ACKs:** Every payload packet is wrapped in a `SeqDataPacket` format containing a monotonic sequence number (4 bytes). The recipient acknowledges data via `AckPacket`, utilizing a base sequence number accompanied by a 64-bit acknowledgment bitmap for handling blocks of data at once.
-* **Flow Control & Buffers:** The `RecvBuffer` maintains an internal map of sequences. Out-of-order packets are buffered. Data is strictly delivered to the internal SOCKS5/Target TCP socket *in-order*.
-* **Retransmission Engine:** An active background goroutine sweeps the `SendBuffer` every 100ms. Unacknowledged packets exceeding the `retransmit_timeout` are resent using exponential backoff up to a defined `max_retries` limit.
-
-## 4. Session Multiplexing
-Establishing a new tunnel session (INIT / INIT_ACK exchange) incurs significant latency. To mitigate this, Spoof Tunnel implements an internal multiplexer (Mux).
-
-A single "Master Session" is established over the unreliable link. All incoming local TCP SOCKS5 connections are assigned a virtual 4-byte `StreamID` and multiplexed within this single master session.
-
-* `0x01 MuxStreamOpen:` Followed by [StreamID:4][TargetLen:2][Target String]
-* `0x02 MuxStreamData:` Followed by [StreamID:4][Raw Payload]
-* `0x03 MuxStreamClose:` Followed by [StreamID:4]
-* `0x04 MuxStreamAck:` Server acknowledgment for successful proxy stream creation.
-
-## 5. Cryptography
-Security and obfuscation are enforced via **ChaCha20-Poly1305 AEAD**. AEAD ensures that not a single byte of the IP payload or tunnel header structure is visible or modifiable by an active MITM attacker without immediately dropping the connection.
-
-Each session initializes a randomized nonce mechanism to prevent replay attacks, while the static pre-shared Base64 keys act as the master cryptographic secret.
+This file fills those gaps.
 
 ---
 
-## Usage Instructions
+## Important notes before you start
 
-### 1. Build the Binary
-Spoof Tunnel is written in Go. You can build it using the standard Go toolchain:
+1. **Use only on systems and networks you own or are explicitly authorized to test.**
+2. **Raw sockets require elevated privileges.** The code warns that running without root may fail. citeturn526439view2
+3. **A valid config file is mandatory.** The code validates mode, transport, addresses, spoof fields, crypto keys, and other settings before startup. citeturn983978view0
+4. **Client and server do not use separate subcommands.** The operational mode comes from the JSON config field `mode`, and the binary is started with `-config`. The current repository README examples showing `server -c ...` / `client -c ...` do not match `main.go`. citeturn526439view2turn983978view0
+5. **Key generation uses `-generate-keys`.** The current README says `generate-keys` as a command, but the actual code uses a boolean flag. citeturn526439view2
+
+---
+
+## Tested target environment
+
+This guide is written for:
+
+- Ubuntu 20.04+
+- Ubuntu 22.04+
+- Ubuntu 24.04+
+- Debian 11+
+- Debian 12+
+
+You need a 64-bit Linux host with:
+
+- root access or the ability to grant Linux capabilities
+- Go installed if you want to build from source
+- `systemd` if you want to run it as a service
+
+---
+
+## Repository layout
+
+Important files in the repository:
+
+- `cmd/spoof/main.go` — main program entrypoint and CLI flags
+- `config.json.example` — example client config
+- `server-config.json.example` — example server config
+- `README.md` — English README
+- `README-fa.md` — Persian README citeturn793958view0turn526439view0turn526439view1
+
+---
+
+## 1) Install prerequisites on Ubuntu / Debian
+
+Update package lists and install the common tools you will typically want during build and operation:
+
+```bash
+sudo apt update
+sudo apt install -y git curl wget ca-certificates build-essential pkg-config \
+  golang-go libpcap-dev tcpdump jq systemd
+```
+
+Notes:
+
+- The project imports `gopacket` and `pcap` in the implementation path described by the README. citeturn230281view0turn197365view0
+- If you already have a newer Go toolchain installed manually, you can skip `golang-go`.
+
+Check versions:
+
+```bash
+go version
+uname -a
+```
+
+---
+
+## 2) Download the source
+
+```bash
+git clone https://github.com/ParsaKSH/spoof-tunnel.git
+cd spoof-tunnel
+```
+
+If you prefer to build a tagged release, check the releases page and checkout that tag before building. The repository shows a latest release entry on GitHub. citeturn197365view0
+
+---
+
+## 3) Build the binary
+
+Build for Linux AMD64:
 
 ```bash
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o spoof ./cmd/spoof/
 ```
 
-### 2. Generate Cryptographic Keys
-Before starting the tunnel, you need to generate a pair of Base64 private/public keys for both the server and the client.
+That build command matches the README. citeturn197365view0turn599798view0
+
+Optional: install into `/usr/local/bin`:
 
 ```bash
-./spoof keygen
+sudo install -m 0755 spoof /usr/local/bin/spoof
 ```
-*Take note of the Private Key and Public Key.* The Server's Public Key must be placed in the Client's `peer_public_key` field, and the Client's Public Key must be placed in the Server's `peer_public_key` field.
 
-### 3. Running the Service
-> **Note:** Raw sockets require elevated privileges. You must execute both the client and server binaries as `root` (or assign the `CAP_NET_RAW` capability).
+Check that it starts:
 
-**On the Server:**
 ```bash
-sudo ./spoof -c server-config.json
+spoof -version
 ```
 
-**On the Client:**
-```bash
-sudo ./spoof -c client-config.json
-```
-Once the client connects, it will open a SOCKS5 proxy on `127.0.0.1:1080` (by default) that securely routes through the spoofed tunnel.
+The binary exposes a `-version` flag in `main.go`. citeturn526439view2
 
 ---
 
-## Client Config
+## 4) Generate keys correctly
 
-| Section      | Key                     | Type    | Description                                                                 |
-|--------------|-------------------------|---------|-----------------------------------------------------------------------------|
-| mode         | mode                    | string  | Must be "client"                                                            |
-| transport    | type                    | string  | "udp" or "icmp" (tunnel transport)                                          |
-| transport    | icmp_mode               | string  | "echo" or "reply" (only for ICMP)                                           |
-| transport    | protocol_number         | int     | 0 (default, unused for ICMP/UDP)                                            |
-| listen       | address                 | string  | SOCKS5 listening address (127.0.0.1)                                        |
-| listen       | port                    | int     | SOCKS5 listening port (1080)                                                |
-| server       | address                 | string  | Remote server actual IP to send tunnel packets to                           |
-| server       | port                    | int     | Remote server port (for UDP)                                                |
-| spoof        | source_ip               | string  | IP this client claims when sending outbound packets                         |
-| spoof        | peer_spoof_ip           | string  | Expected spoofed source IP of incoming server packets (used by BPF filter)  |
-| crypto       | private_key             | string  | Client's Base64 private key (from ./spoof keygen)                           |
-| crypto       | peer_public_key         | string  | Server's Base64 public key                                                  |
-| performance  | buffer_size             | int     | Main packet buffer size                                                     |
-| performance  | mtu                     | int     | Max payload before encapsulation (e.g. 1400)                                |
-| performance  | session_timeout         | int     | Master session timeout in seconds                                           |
-| performance  | workers                 | int     | Number of packet processing goroutines                                      |
-| performance  | read_buffer             | int     | Kernel socket read buffer size                                              |
-| performance  | write_buffer            | int     | Kernel socket write buffer size                                             |
-| fec          | enabled                 | bool    | true = enable Reed-Solomon Forward Error Correction                         |
-| fec          | data_shards             | int     | Number of real data shards                                                  |
-| fec          | parity_shards           | int     | Number of parity shards (recover up to this many lost packets)              |
-| logging      | level                   | string  | "info", "debug", "warn", or "error"                                         |
-| logging      | file                    | string  | Log file path (empty = stdout)                                              |
+Generate a keypair on each side:
 
-## Server Config
+```bash
+./spoof -generate-keys
+```
 
-| Section      | Key                     | Type    | Description                                                                 |
-|--------------|-------------------------|---------|-----------------------------------------------------------------------------|
-| mode         | mode                    | string  | Must be "server"                                                            |
-| transport    | type                    | string  | "udp" or "icmp" (tunnel transport)                                          |
-| transport    | icmp_mode               | string  | "echo" or "reply" (only for ICMP)                                           |
-| transport    | protocol_number         | int     | 0 (default, unused for ICMP/UDP)                                            |
-| listen       | address                 | string  | Tunnel listening IP (0.0.0.0 for all interfaces)                            |
-| listen       | port                    | int     | UDP listening port (ignored for ICMP)                                       |
-| spoof        | source_ip               | string  | IP this server claims when sending outbound packets                         |
-| spoof        | source_ipv6             | string  | IPv6 version of source_ip (leave empty if unused)                           |
-| spoof        | peer_spoof_ip           | string  | Expected spoofed source IP of incoming client packets (used by BPF filter)  |
-| spoof        | peer_spoof_ipv6         | string  | IPv6 version of peer_spoof_ip                                               |
-| spoof        | client_real_ip          | string  | Client's actual real IP (server routes replies here)                        |
-| spoof        | client_real_ipv6        | string  | IPv6 version of client_real_ip                                              |
-| crypto       | private_key             | string  | Server's Base64 private key (from ./spoof keygen)                           |
-| crypto       | peer_public_key         | string  | Client's Base64 public key                                                  |
-| performance  | buffer_size             | int     | Main packet buffer size                                                     |
-| performance  | mtu                     | int     | Max payload before encapsulation (e.g. 1400)                                |
-| performance  | session_timeout         | int     | Master session timeout in seconds                                           |
-| performance  | workers                 | int     | Number of packet processing goroutines                                      |
-| performance  | read_buffer             | int     | Kernel socket read buffer size                                              |
-| performance  | write_buffer            | int     | Kernel socket write buffer size                                             |
-| reliability  | enabled                 | bool    | true = enable custom TCP-like reliability layer                             |
-| reliability  | window_size             | int     | Max unacknowledged packets in flight                                        |
-| reliability  | retransmit_timeout_ms   | int     | Base retransmission timeout (ms)                                            |
-| reliability  | max_retries             | int     | Max retransmission attempts per packet                                      |
-| reliability  | ack_interval_ms         | int     | How often to send ACKs (ms)                                                 |
-| fec          | enabled                 | bool    | true = enable Reed-Solomon Forward Error Correction                         |
-| fec          | data_shards             | int     | Number of real data shards                                                  |
-| fec          | parity_shards           | int     | Number of parity shards (recover up to this many lost packets)              |
-| keepalive    | enabled                 | bool    | true = send periodic keepalive pings                                        |
-| keepalive    | interval_seconds        | int     | Seconds between keepalive packets                                           |
-| keepalive    | timeout_seconds         | int     | Session drop timeout if no activity                                         |
-| logging      | level                   | string  | "info", "debug", "warn", or "error"                                         |
-| logging      | file                    | string  | Log file path (empty = stdout)                                              |
+The code prints:
+
+- a **Private Key** for the local machine
+- a **Public Key** to share with the peer
+
+You need:
+
+- the **local private key** in your own config
+- the **peer public key** in your own config
+
+This behavior is defined directly in `main.go` and in config validation. citeturn526439view2turn983978view0
+
+Suggested workflow:
+
+1. Generate keys on the server.
+2. Generate keys on the client.
+3. Exchange only the public keys.
+4. Keep each private key only on its own host.
+
+---
+
+## 5) Create directories for configs and logs
+
+```bash
+sudo mkdir -p /etc/spoof-tunnel
+sudo mkdir -p /var/log/spoof-tunnel
+sudo chmod 700 /etc/spoof-tunnel
+```
+
+Recommended file names:
+
+- server: `/etc/spoof-tunnel/server.json`
+- client: `/etc/spoof-tunnel/client.json`
+
+---
+
+## 6) Understand how startup mode works
+
+The binary does **not** switch modes using subcommands. It reads the `mode` field from the JSON config:
+
+- `"mode": "server"`
+- `"mode": "client"` citeturn983978view0
+
+So the correct startup pattern is:
+
+```bash
+sudo ./spoof -config /path/to/config.json
+```
+
+or, if installed globally:
+
+```bash
+sudo spoof -config /path/to/config.json
+```
+
+---
+
+## 7) Client configuration example
+
+The repository ships a compact example for client mode. Below is a clearer expanded version with comments removed so it remains valid JSON.
+
+```json
+{
+  "mode": "client",
+  "transport": {
+    "type": "udp",
+    "icmp_mode": "echo",
+    "protocol_number": 0
+  },
+  "listen": {
+    "address": "127.0.0.1",
+    "port": 1080
+  },
+  "server": {
+    "address": "SERVER_REAL_IP",
+    "port": 8080
+  },
+  "spoof": {
+    "source_ip": "CLIENT_SPOOF_IP",
+    "peer_spoof_ip": "SERVER_SPOOF_IP"
+  },
+  "crypto": {
+    "private_key": "CLIENT_PRIVATE_KEY_BASE64",
+    "peer_public_key": "SERVER_PUBLIC_KEY_BASE64"
+  },
+  "performance": {
+    "buffer_size": 65535,
+    "mtu": 1400,
+    "session_timeout": 600,
+    "workers": 4,
+    "read_buffer": 4194304,
+    "write_buffer": 4194304,
+    "send_rate_limit": 1000
+  },
+  "reliability": {
+    "enabled": true,
+    "window_size": 128,
+    "retransmit_timeout_ms": 300,
+    "max_retries": 5,
+    "ack_interval_ms": 50
+  },
+  "fec": {
+    "enabled": false,
+    "data_shards": 10,
+    "parity_shards": 3
+  },
+  "keepalive": {
+    "enabled": true,
+    "interval_seconds": 30,
+    "timeout_seconds": 120
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/spoof-tunnel/client.log"
+  }
+}
+```
+
+Why this differs from `config.json.example`:
+
+- the shipped example is very compressed and omits some fields that the code supports by default
+- `send_rate_limit` exists in `PerformanceConfig` even though it is not documented in the current README table. citeturn526439view0turn983978view0
+
+### Client field meanings
+
+- `listen.address` / `listen.port`: where the local SOCKS5 proxy will bind. Default is `127.0.0.1:1080` if not set. citeturn983978view0
+- `server.address` / `server.port`: the actual server endpoint the client sends packets toward.
+- `spoof.source_ip`: the local side’s chosen spoof identity.
+- `spoof.peer_spoof_ip`: the expected source IP of packets from the peer, used by the filter logic.
+- `crypto.private_key`: this client’s private key.
+- `crypto.peer_public_key`: the server’s public key.
+
+---
+
+## 8) Server configuration example
+
+The repository includes `server-config.json.example`. Below is a cleaned-up version suitable as a starting point.
+
+```json
+{
+  "mode": "server",
+  "transport": {
+    "type": "icmp",
+    "icmp_mode": "echo",
+    "protocol_number": 0
+  },
+  "listen": {
+    "address": "0.0.0.0",
+    "port": 8080
+  },
+  "spoof": {
+    "source_ip": "SERVER_SPOOF_IP",
+    "source_ipv6": "",
+    "peer_spoof_ip": "CLIENT_SPOOF_IP",
+    "peer_spoof_ipv6": "",
+    "client_real_ip": "CLIENT_REAL_IP",
+    "client_real_ipv6": ""
+  },
+  "crypto": {
+    "private_key": "SERVER_PRIVATE_KEY_BASE64",
+    "peer_public_key": "CLIENT_PUBLIC_KEY_BASE64"
+  },
+  "performance": {
+    "buffer_size": 131072,
+    "mtu": 1400,
+    "session_timeout": 600,
+    "workers": 16,
+    "read_buffer": 16777216,
+    "write_buffer": 16777216,
+    "send_rate_limit": 1000
+  },
+  "reliability": {
+    "enabled": true,
+    "window_size": 128,
+    "retransmit_timeout_ms": 300,
+    "max_retries": 5,
+    "ack_interval_ms": 50
+  },
+  "fec": {
+    "enabled": true,
+    "data_shards": 10,
+    "parity_shards": 3
+  },
+  "keepalive": {
+    "enabled": true,
+    "interval_seconds": 30,
+    "timeout_seconds": 120
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/spoof-tunnel/server.log"
+  }
+}
+```
+
+### Server-specific requirements
+
+In server mode, config validation requires `client_real_ip` or `client_real_ipv6`. Without it, startup will fail. citeturn983978view0
+
+---
+
+## 9) Full configuration reference
+
+### Required fields
+
+#### Required on both client and server
+
+- `mode`
+- `transport.type`
+- at least one spoof source address: `spoof.source_ip` or `spoof.source_ipv6`
+- `crypto.private_key`
+- `crypto.peer_public_key` citeturn983978view0
+
+#### Required in client mode
+
+- `server.address`
+- `server.port` citeturn983978view0
+
+#### Required in server mode
+
+- `spoof.client_real_ip` or `spoof.client_real_ipv6` citeturn983978view0
+
+### Transport section
+
+- `transport.type`: `udp`, `icmp`, or `raw` are accepted by the config validator. The current README mainly documents `udp` and `icmp`. citeturn983978view0turn197365view0
+- `transport.icmp_mode`: `echo` or `reply` when using ICMP.
+- `transport.protocol_number`: used only if `type` is `raw`, must be 1–255. citeturn983978view0
+
+### Listen section
+
+- `listen.address`: IP address to bind locally.
+- `listen.port`: bind port.
+- defaults: `127.0.0.1:1080` in client mode, `127.0.0.1:8080` unless overridden, though for a real server you will usually set `0.0.0.0`. Defaults are applied in code. citeturn983978view0
+
+### Performance section
+
+- `buffer_size`: packet buffer size
+- `mtu`: tunnel payload size before encapsulation; lower it if fragmentation appears
+- `session_timeout`: inactivity timeout in seconds
+- `workers`: number of packet workers
+- `read_buffer` / `write_buffer`: socket buffer sizes
+- `send_rate_limit`: packets per second; field exists in code even though the examples do not show it clearly. citeturn983978view0
+
+### Reliability section
+
+Defaults are automatically applied for window size, retransmit timeout, retry count, and ACK interval if omitted. citeturn983978view0
+
+### FEC section
+
+If `fec.enabled` is true:
+
+- `data_shards >= 1`
+- `parity_shards >= 1`
+- `data_shards + parity_shards <= 256` citeturn983978view0
+
+### Keepalive section
+
+Default values are applied in code for interval and timeout if omitted. citeturn983978view0
+
+---
+
+## 10) Run it manually first
+
+### Server
+
+```bash
+sudo spoof -config /etc/spoof-tunnel/server.json
+```
+
+### Client
+
+```bash
+sudo spoof -config /etc/spoof-tunnel/client.json
+```
+
+Expected behavior:
+
+- server logs startup, transport type, and spoof source IP
+- client logs startup, server destination, spoof source IP, and the local SOCKS5 bind address
+- on success, the client exposes a SOCKS5 proxy on the configured `listen.address:listen.port` (commonly `127.0.0.1:1080`) citeturn526439view2
+
+---
+
+## 11) Run without full root using capabilities
+
+If you do not want to run the binary via `sudo`, grant the necessary capability:
+
+```bash
+sudo setcap cap_net_raw+ep /usr/local/bin/spoof
+getcap /usr/local/bin/spoof
+```
+
+Possible output:
+
+```bash
+/usr/local/bin/spoof cap_net_raw=ep
+```
+
+If packet capture behavior still needs broader privileges on your host, root may still be simpler.
+
+---
+
+## 12) Example `systemd` unit files
+
+### Server service
+
+Create `/etc/systemd/system/spoof-tunnel-server.service`:
+
+```ini
+[Unit]
+Description=Spoof Tunnel Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/spoof -config /etc/spoof-tunnel/server.json
+Restart=always
+RestartSec=3
+User=root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Client service
+
+Create `/etc/systemd/system/spoof-tunnel-client.service`:
+
+```ini
+[Unit]
+Description=Spoof Tunnel Client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/spoof -config /etc/spoof-tunnel/client.json
+Restart=always
+RestartSec=3
+User=root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now spoof-tunnel-server
+# or
+sudo systemctl enable --now spoof-tunnel-client
+```
+
+Check status:
+
+```bash
+systemctl status spoof-tunnel-server
+journalctl -u spoof-tunnel-server -f
+```
+
+---
+
+## 13) Using the local SOCKS5 proxy on the client
+
+After the client starts successfully, applications can use the configured local SOCKS5 listener.
+
+Example with `curl`:
+
+```bash
+curl --socks5-hostname 127.0.0.1:1080 https://example.com/
+```
+
+If you changed `listen.address` or `listen.port`, update the SOCKS endpoint accordingly.
+
+---
+
+## 14) Logging
+
+The code supports:
+
+- `debug`
+- `info`
+- `warn`
+- `error` citeturn983978view0
+
+To log to a file:
+
+```json
+"logging": {
+  "level": "debug",
+  "file": "/var/log/spoof-tunnel/client.log"
+}
+```
+
+To keep logging on stdout/stderr, leave `file` empty.
+
+Useful commands:
+
+```bash
+tail -f /var/log/spoof-tunnel/client.log
+tail -f /var/log/spoof-tunnel/server.log
+journalctl -u spoof-tunnel-client -f
+```
+
+---
+
+## 15) Troubleshooting
+
+### The binary exits immediately with a config error
+
+The config validator is strict. Common causes include:
+
+- invalid `mode`
+- missing `server.address` in client mode
+- missing `crypto.private_key`
+- missing `crypto.peer_public_key`
+- missing `spoof.client_real_ip` in server mode
+- invalid IP syntax in any spoof or listen fields citeturn983978view0
+
+### “Running without root privileges. Raw sockets may fail.”
+
+This warning comes from the code when EUID is not 0. Run as root or grant `CAP_NET_RAW`. citeturn526439view2
+
+### The client starts but no local proxy appears
+
+Verify:
+
+- `mode` is `client`
+- `listen.address` and `listen.port` are valid
+- the process did not abort after logging a startup message
+
+### Key errors on startup
+
+If private/public key parsing fails, re-run:
+
+```bash
+./spoof -generate-keys
+```
+
+and make sure each side uses:
+
+- its **own private key**
+- the **other side’s public key**
+
+### MTU-related instability
+
+If transfers seem unstable, lower `performance.mtu`, for example from `1400` to `1300`, then test again. The existing README also notes MTU tuning to avoid fragmentation. citeturn197365view0
+
+### FEC validation errors
+
+If FEC is enabled, make sure shard counts are positive and the total does not exceed 256. citeturn983978view0
+
+---
+
+## 16) Operational checklist
+
+### Server checklist
+
+- [ ] Go and required packages installed
+- [ ] binary built or installed
+- [ ] server private key generated
+- [ ] client public key inserted into `peer_public_key`
+- [ ] `mode` set to `server`
+- [ ] `spoof.client_real_ip` set
+- [ ] logging path writable
+- [ ] started with root or `CAP_NET_RAW`
+
+### Client checklist
+
+- [ ] binary built or installed
+- [ ] client private key generated
+- [ ] server public key inserted into `peer_public_key`
+- [ ] `mode` set to `client`
+- [ ] `server.address` and `server.port` set
+- [ ] local SOCKS5 bind configured
+- [ ] started with root or `CAP_NET_RAW`
+
+---
+
+## 17) Known documentation issues fixed in this version
+
+This rewritten README corrects or clarifies the following points from the current repository documentation:
+
+1. **Correct CLI syntax**: use `-config`, not `-c`. The code defines `configPath = flag.String("config", ...)`. citeturn526439view2
+2. **Correct key generation syntax**: use `-generate-keys`, not `generate-keys` as a subcommand. citeturn526439view2
+3. **Mode comes from config**: no separate `server` or `client` CLI subcommands are implemented. citeturn526439view2turn983978view0
+4. **Server requires `client_real_ip`**: this is enforced by validation and should be documented clearly. citeturn983978view0
+5. **`raw` transport exists in config validation** even though it is not fully covered in the README tables. citeturn983978view0
+6. **`send_rate_limit` exists in code** and is worth documenting for completeness. citeturn983978view0
+
+---
+
+## 18) License
+
+The repository is published under the Apache-2.0 license according to GitHub. citeturn793958view0
+
+---
+
+## 19) Suggested repository file names
+
+If you want to replace the existing docs in your fork, a clean approach is:
+
+- `README.md` → this English file
+- `README-fa.md` → the Persian file included alongside it
+
+If you prefer to keep the original files and review first, upload them as:
+
+- `README.en.complete.md`
+- `README-fa.complete.md`
+
