@@ -165,7 +165,7 @@ ip route
 فایل زیر را دقیقاً در مسیر `/etc/spoof-tunnel/client.json` ایجاد کنید و فقط مقادیر مشخص‌شده را با مقادیر واقعی خودتان جایگزین کنید:
 
 ```bash
-sudo tee /etc/spoof-tunnel/client.json >/dev/null <<'JSON'
+sudo mkdir -p /etc/spoof-tunnel && sudo tee /etc/spoof-tunnel/client.json> /dev/null <<'EOF'
 {
   "mode": "client",
   "transport": {
@@ -191,7 +191,7 @@ sudo tee /etc/spoof-tunnel/client.json >/dev/null <<'JSON'
   },
   "performance": {
     "buffer_size": 65535,
-    "mtu": 1400,
+    "mtu": 1180,
     "session_timeout": 600,
     "workers": 4,
     "read_buffer": 4194304,
@@ -220,7 +220,7 @@ sudo tee /etc/spoof-tunnel/client.json >/dev/null <<'JSON'
     "file": "/var/log/spoof-tunnel/client.log"
   }
 }
-JSON
+EOF
 ```
 
 ---
@@ -230,7 +230,7 @@ JSON
 فایل زیر را دقیقاً در مسیر `/etc/spoof-tunnel/server.json` ایجاد کنید و فقط مقادیر مشخص‌شده را با مقادیر واقعی خودتان جایگزین کنید:
 
 ```bash
-sudo tee /etc/spoof-tunnel/server.json >/dev/null <<'JSON'
+sudo mkdir -p /etc/spoof-tunnel && sudo tee /etc/spoof-tunnel/server.json > /dev/null <<'EOF'
 {
   "mode": "server",
   "transport": {
@@ -256,7 +256,7 @@ sudo tee /etc/spoof-tunnel/server.json >/dev/null <<'JSON'
   },
   "performance": {
     "buffer_size": 65535,
-    "mtu": 1400,
+    "mtu": 1180,
     "session_timeout": 600,
     "workers": 4,
     "read_buffer": 4194304,
@@ -285,7 +285,7 @@ sudo tee /etc/spoof-tunnel/server.json >/dev/null <<'JSON'
     "file": "/var/log/spoof-tunnel/server.log"
   }
 }
-JSON
+EOF
 ```
 
 ---
