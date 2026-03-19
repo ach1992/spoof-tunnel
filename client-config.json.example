@@ -1,0 +1,41 @@
+{
+  "mode": "client",
+  "transport": {
+    "type": "udp",
+    "icmp_mode": "echo",
+    "protocol_number": 0
+  },
+  "listen": {
+    "address": "127.0.0.1",
+    "port": 1080
+  },
+  "server": {
+    "address": "1.2.3.4",
+    "port": 8080
+  },
+  "spoof": {
+    "source_ip": "5.6.7.8",
+    "peer_spoof_ip": "9.10.11.12"
+  },
+  "crypto": {
+    "private_key": "",
+    "peer_public_key": ""
+  },
+  "performance": {
+    "buffer_size": 65535,
+    "mtu": 1400,
+    "session_timeout": 90,
+    "workers": 4,
+    "read_buffer": 4194304,
+    "write_buffer": 4194304
+  },
+  "fec": {
+    "enabled": false,
+    "data_shards": 10,
+    "parity_shards": 3
+  },
+  "logging": {
+    "level": "info",
+    "file": ""
+  }
+}

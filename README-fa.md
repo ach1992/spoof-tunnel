@@ -100,7 +100,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o spoof ./cmd/s
 پیش از راه‌اندازی، باید یک جفت کلید خصوصی/عمومی (Private/Public Keys) با فرمت Base64 برای کلاینت و سرور اختصاصیِ خود ایجاد کنید.
 
 ```bash
-./spoof generate-keys
+./spoof keygen
 ```
 *کلید Private مشترک خود و Public Key تولید شده را در جای امنی یادداشت کنید.* کلید عمومی سرور (Server Public Key) را باید درون فیلد `peer_public_key` کانفیگ کلاینت، و کلید عمومی کلاینت را درون همان فیلد در کانفیگ سرور قرار دهید.
 
@@ -109,59 +109,81 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o spoof ./cmd/s
 
 **در سمت سرور:**
 ```bash
-sudo ./spoof server -c server-config.json
+sudo ./spoof -c server-config.json
 ```
 
 **در سمت کلاینت:**
 ```bash
-sudo ./spoof client -c client-config.json
+sudo ./spoof -c client-config.json
 ```
 به محض اتصال موفقیت آمیز، کلاینت یک پروکسی SOCKS5 روی پورت `127.0.0.1:1080` (به صورت پیش‌فرض) باز خواهد کرد که ترافیک آن کاملا امن و از طریق تونل اسپوف شده مسیریابی می‌شود.
 
 ---
 
-## آموزش پارامترهای فایل پیکربندی (`config.json`)
+# تنظیمات کلاینت
 
-در اینجا تمامی تنظیماتی که درون فایل `config.json` وجود دارد به تفصیل شرح داده شده است:
+| بخش | کلید | نوع | توضیح |
+|----|----|----|----|
+| mode | mode | string | باید "client" باشد |
+| transport | type | string | "udp" یا "icmp" (نوع ترنسپورت تونل) |
+| transport | icmp_mode | string | "echo" یا "reply" (فقط برای ICMP) |
+| transport | protocol_number | int | 0 (پیش‌فرض، برای ICMP/UDP استفاده نمی‌شود) |
+| listen | address | string | آدرس گوش دادن SOCKS5 (مثلاً 127.0.0.1) |
+| listen | port | int | پورت SOCKS5 (مثلاً 1080) |
+| server | address | string | IP واقعی سرور برای ارسال پکت‌های تونل |
+| server | port | int | پورت سرور (برای UDP) |
+| spoof | source_ip | string | IP جعلی که کلاینت هنگام ارسال پکت استفاده می‌کند |
+| spoof | peer_spoof_ip | string | IP جعلی مورد انتظار از سمت سرور (برای فیلتر BPF) |
+| crypto | private_key | string | کلید خصوصی Base64 کلاینت |
+| crypto | peer_public_key | string | کلید عمومی Base64 سرور |
+| performance | buffer_size | int | اندازه بافر اصلی پکت |
+| performance | mtu | int | حداکثر اندازه payload قبل از encapsulation (مثلاً 1400) |
+| performance | session_timeout | int | زمان timeout جلسه اصلی (ثانیه) |
+| performance | workers | int | تعداد goroutineهای پردازش پکت |
+| performance | read_buffer | int | اندازه بافر خواندن سوکت کرنل |
+| performance | write_buffer | int | اندازه بافر نوشتن سوکت کرنل |
+| fec | enabled | bool | فعال‌سازی Forward Error Correction (Reed-Solomon) |
+| fec | data_shards | int | تعداد شاردهای داده |
+| fec | parity_shards | int | تعداد شاردهای parity (قابل بازیابی تا این تعداد پکت از دست رفته) |
+| logging | level | string | سطح لاگ ("info"، "debug"، "warn"، "error") |
+| logging | file | string | مسیر فایل لاگ (خالی = stdout) |
 
-| شناسه تنظیمات در فایل | نوع | توصیحات |
-| :--- | :--- | :--- |
-| `mode` | رشته | مشخص می‌کند که برنامه در حالت `"client"` باید اجرا شود یا `"server"`. |
-| **`transport`** | | |
-| `transport.type` | رشته | یکی از دو حالت `"udp"` یا `"icmp"` برای انتقال را تعیین می‌کند. |
-| `transport.icmp_mode` | رشته | در صورت استفاده از ICMP دارای دو مود `"echo"` و `"reply"` است. |
-| **`listen`** | | |
-| `listen.address` | رشته | **در کلاینت**: آدرسی که سرور SOCKS5 برنامه روی آن گوش می‌دهد.<br>**در سرور**: آی‌پی آدرسی که سرور ترافیک تونل را از روی آن دریافت می‌کند. |
-| `listen.port` | عدد | **در کلاینت**: پورتی که پروکسی SOCKS5 روی آن ایجاد می‌شود.<br>**در سرور**: پورتی که تونل در حالت UDP به آن گوش فرا می‌دهد. |
-| **`server`** | | |
-| `server.address` | رشته | **مخصوص کلاینت**: آی‌پی واقعی سرور هدف در خارج از کشور. |
-| `server.port` | عدد | **مخصوص کلاینت**: پورت واقعی سرور هدف. |
-| **`spoof`** | | |
-| `spoof.source_ip` | رشته | آدرس آی‌پی جعلی که دیوایس نصب شده محلی، بسته‌های شبکه خود را تحت عنوان آن جا زده و ارسال می‌کند. |
-| `spoof.peer_spoof_ip`| رشته | آدرس آی‌پی جعلی که فیلتر BPF باید انتظار دریافت دیتا از سمت آن (سمتِ مقابل ارتباط) را داشته باشد. بسیار مهم جهت اسنیف کردن پکت‌ها. |
-| **`crypto`** | | |
-| `crypto.private_key`| رشته | کلید خصوصی ساخته شده از طریق دستور `generate-keys`. |
-| `crypto.peer_public_key`| رشته | کلید عمومی سیستم مقابل. (در کلاینت، کلید عمومی سرور درج می‌شود و بالعکس). |
-| **`performance`** | | |
-| `performance.buffer_size` | Integer | حجم بافر |
-| `performance.read_buffer` | Integer | |
-| `performance.write_buffer` | Integer | |
-| `performance.mtu` | عدد | حداکثر حجم قابل بارگذاری (Payload) قبل از انجام پروسه کپسوله‌سازی تونل. بهتر است برای جلوگیری از مشکل قطعه‌قطعه شدن پکت‌ها (L3 Fragmentation) مقدار پایین‌تری (مثلا `1300` یا `1400`) ست شود. |
-| `performance.session_timeout` | عدد | حداکثر زمان طول عمر کانکشن و از بین رفتن سشن به واحد ثانیه در صورت عدم فعالیت. |
-| `performance.workers` | عدد | تعداد Thread های پردازشی برای دریافت همزمان پکت‌ها. |
-| **`fec`** | | |
-| `fec.enabled` | Boolean | فعال یا غیر فعال کردن fec(true/false) | 
-| `fec.data_shards` | Integer | ضریب دیتای واقعی |
-| `fec.parity_shards` | Integer | ضریب دیتای ساختگی |
-| **`reliability`** | | (تنظیمات لایه تضمین کیفیت و ارسال مجدد بسته‌ها) |
-| `reliability.enabled` | بولین | با قرار دادن مقدار `true`، لایه پایداری که توالی پکت‌ها را مدیریت می‌کند فعال می‌شود. |
-| `reliability.window_size` | عدد | تعداد مجاز پکت‌هایی که می‌توانند بصورت In-flight در شبکه رها شوند پیش از آنکه متوقف شده و منتظر دریافت ACK از گیرنده بمانند. |
-| `reliability.retransmit_timeout_ms`| عدد | زمان پایه بر حسب میلی‌ثانیه برای صبر پیش از آنکه پکتِ گم شده مجددا با الگوریتم بازپخش ارسال گردد. |
-| `reliability.max_retries` | عدد | تعداد دفعات تلاش برای ارسال مجدد یک پکت ناکام. |
-| `reliability.ack_interval_ms` | عدد | فاصله زمانی هر چند میلی ثانیه برای تجمیع چندین ACK در یک پکت تکی. |
-| **`keepalive`** | | |
-| `keepalive.enabled` | بولین | ارسال بسته‌های پینگ دوره‌ای جهت زنده نگه داشتن تونل و جلوگیری از بسته شدن سشن توسط تجهیزات شبکه سر راه. |
-| `keepalive.interval_seconds` | عدد | وقفه میان ارسال درخواست‌های پینگ. |
-| `keepalive.timeout_seconds` | عدد | مدت زمانی که اگر از سمت سرور پاسخی دریافت نشد، نشست اصلی کلاً منقضی شود. |
+# تنظیمات سرور
+
+| بخش | کلید | نوع | توضیح |
+|----|----|----|----|
+| mode | mode | string | باید "server" باشد |
+| transport | type | string | "udp" یا "icmp" (نوع ترنسپورت تونل) |
+| transport | icmp_mode | string | "echo" یا "reply" (فقط برای ICMP) |
+| transport | protocol_number | int | 0 (پیش‌فرض، برای ICMP/UDP استفاده نمی‌شود) |
+| listen | address | string | IP برای گوش دادن تونل (مثلاً 0.0.0.0) |
+| listen | port | int | پورت گوش دادن UDP (برای ICMP نادیده گرفته می‌شود) |
+| spoof | source_ip | string | IP جعلی که سرور هنگام ارسال پکت استفاده می‌کند |
+| spoof | source_ipv6 | string | نسخه IPv6 از source_ip (در صورت نیاز) |
+| spoof | peer_spoof_ip | string | IP جعلی مورد انتظار از سمت کلاینت (برای فیلتر BPF) |
+| spoof | peer_spoof_ipv6 | string | نسخه IPv6 از peer_spoof_ip |
+| spoof | client_real_ip | string | IP واقعی کلاینت (سرور پاسخ‌ها را به این IP می‌فرستد) |
+| spoof | client_real_ipv6 | string | نسخه IPv6 از client_real_ip |
+| crypto | private_key | string | کلید خصوصی Base64 سرور |
+| crypto | peer_public_key | string | کلید عمومی Base64 کلاینت |
+| performance | buffer_size | int | اندازه بافر اصلی پکت |
+| performance | mtu | int | حداکثر اندازه payload قبل از encapsulation |
+| performance | session_timeout | int | زمان timeout جلسه اصلی (ثانیه) |
+| performance | workers | int | تعداد worker برای پردازش پکت |
+| performance | read_buffer | int | اندازه بافر خواندن سوکت کرنل |
+| performance | write_buffer | int | اندازه بافر نوشتن سوکت کرنل |
+| reliability | enabled | bool | فعال‌سازی لایه reliability شبیه TCP |
+| reliability | window_size | int | حداکثر تعداد پکت‌های تأیید نشده در حال ارسال |
+| reliability | retransmit_timeout_ms | int | زمان پایه برای ارسال مجدد پکت (میلی‌ثانیه) |
+| reliability | max_retries | int | حداکثر تعداد تلاش مجدد برای هر پکت |
+| reliability | ack_interval_ms | int | فاصله زمانی ارسال ACK (میلی‌ثانیه) |
+| fec | enabled | bool | فعال‌سازی Forward Error Correction |
+| fec | data_shards | int | تعداد شاردهای داده |
+| fec | parity_shards | int | تعداد شاردهای parity |
+| keepalive | enabled | bool | فعال‌سازی ارسال keepalive |
+| keepalive | interval_seconds | int | فاصله ارسال keepalive (ثانیه) |
+| keepalive | timeout_seconds | int | زمان قطع جلسه در صورت عدم فعالیت |
+| logging | level | string | سطح لاگ ("info"، "debug"، "warn"، "error") |
+| logging | file | string | مسیر فایل لاگ (خالی = stdout) |
 
 توسعه داده شده و تست شده در قطعی کامل اینترنت ایران پس از قیام خونین 18 و 19 دی

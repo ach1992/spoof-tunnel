@@ -1,131 +1,147 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 
 	"github.com/ParsaKSH/spooftunnel/internal/config"
 	"github.com/ParsaKSH/spooftunnel/internal/crypto"
 	"github.com/ParsaKSH/spooftunnel/internal/tunnel"
+	"github.com/fatih/color"
+	"github.com/spf13/cobra"
 )
 
 var (
-	configPath = flag.String("config", "config.json", "path to config file")
-	genKeys    = flag.Bool("generate-keys", false, "generate new key pair and exit")
-	version    = flag.Bool("version", false, "show version and exit")
+	Version    = "1.0.0"
+	ConfigFile = "config.json"
+	blue       = color.New(color.FgBlue).SprintFunc()
+	red        = color.New(color.FgRed).SprintFunc()
+	yellow     = color.New(color.FgYellow).SprintFunc()
+	green      = color.New(color.FgGreen).SprintFunc()
 )
 
-// Build info (set via ldflags)
-var (
-	Version   = "1.0.0"
-	BuildTime = "unknown"
-	GitCommit = "unknown"
-)
+var mainCmd = &cobra.Command{
+	Use:     "spoof",
+	Version: Version,
+	Run: func(cmd *cobra.Command, args []string) {
+		if os.Geteuid() != 0 {
+			log.Println(yellow("Warning: Running without root privileges. Raw sockets may fail."))
+			log.Println("Run with: sudo ./spoof -c client-config.json")
+			log.Printf("")
+		}
+
+		cfg, err := config.Load(ConfigFile)
+		if err != nil {
+			log.Printf(red("Failed to load config"))
+			log.Printf(red(err))
+			return
+		}
+
+		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+		if cfg.Logging.File != "" {
+			f, err := os.OpenFile(cfg.Logging.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Printf(yellow("Failed to load config"))
+				log.Printf(yellow(err))
+			} else {
+				log.SetOutput(f)
+			}
+		}
+
+		keyPair, err := crypto.ParsePrivateKey(cfg.Crypto.PrivateKey)
+		if err != nil {
+			log.Printf(red("Failed to parse private key"))
+			log.Printf(red(err))
+			return
+		}
+
+		peerPubKey, err := crypto.ParsePublicKey(cfg.Crypto.PeerPublicKey)
+		if err != nil {
+			log.Printf(red("Failed to parse peer public key"))
+			log.Printf(red(err))
+			return
+		}
+
+		sharedSecret, err := crypto.ComputeSharedSecret(keyPair.PrivateKey, peerPubKey)
+		if err != nil {
+			log.Printf(red("Failed to compute shared secret"))
+			log.Printf(red(err))
+			return
+		}
+
+		isInitiator := cfg.Mode == config.ModeClient
+		sendKey, recvKey, err := crypto.DeriveSessionKeys(sharedSecret, isInitiator)
+		if err != nil {
+			log.Printf(red("Failed to derive session keys"))
+			log.Printf(red(err))
+			return
+		}
+
+		cipher, err := crypto.NewCipher(sendKey, recvKey)
+		if err != nil {
+			log.Printf(red("Failed to create cipher"))
+			log.Printf(red(err))
+			return
+		}
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+		fmt.Println()
+		fmt.Println(green("============ Spoof Tunnel " + Version + " ============"))
+		fmt.Printf("%-30s %s\n", "Mode:", cfg.Mode)
+		fmt.Printf("%-30s %s\n", "Transport:", cfg.Transport.Type)
+		fmt.Printf("%-30s %s\n", "Local public key:", keyPair.PublicKeyBase64())
+		if cfg.Transport.Type == config.TransportICMP {
+			fmt.Printf("%-30s %s\n", "ICMP Mode:", blue(cfg.Transport.ICMPMode))
+		}
+
+		switch cfg.Mode {
+		case config.ModeClient:
+			runClient(cfg, cipher, sigCh)
+		case config.ModeServer:
+			runServer(cfg, cipher, sigCh)
+		}
+	},
+}
 
 func main() {
-	flag.Parse()
+	mainCmd.DisableSuggestions = false
+	mainCmd.CompletionOptions.DisableDefaultCmd = true
+	mainCmd.SetHelpCommand(&cobra.Command{})
 
-	// Handle version
-	if *version {
-		fmt.Printf("spoof-tunnel %s\n", Version)
-		fmt.Printf("  Build time: %s\n", BuildTime)
-		fmt.Printf("  Git commit: %s\n", GitCommit)
-		fmt.Printf("  Go version: %s\n", runtime.Version())
-		fmt.Printf("  OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
-		return
-	}
+	mainCmd.Flags().StringVarP(
+		&ConfigFile,
+		"config",
+		"c",
+		ConfigFile,
+		"config file",
+	)
 
-	// Handle key generation
-	if *genKeys {
-		generateKeys()
-		return
-	}
-
-	// Check for root privileges (required for raw sockets)
-	if os.Geteuid() != 0 {
-		log.Println("Warning: Running without root privileges. Raw sockets may fail.")
-		log.Println("         Run with: sudo ./spoof -config config.json")
-	}
-
-	// Load configuration
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
-
-	// Setup logging
-	setupLogging(cfg)
-
-	log.Printf("=== Spoof Tunnel %s ===", Version)
-	log.Printf("Mode: %s", cfg.Mode)
-	log.Printf("Transport: %s", cfg.Transport.Type)
-	if cfg.Transport.Type == config.TransportICMP {
-		log.Printf("ICMP Mode: %s", cfg.Transport.ICMPMode)
-	}
-
-	// Initialize crypto
-	keyPair, err := crypto.ParsePrivateKey(cfg.Crypto.PrivateKey)
-	if err != nil {
-		log.Fatalf("Failed to parse private key: %v", err)
-	}
-
-	peerPubKey, err := crypto.ParsePublicKey(cfg.Crypto.PeerPublicKey)
-	if err != nil {
-		log.Fatalf("Failed to parse peer public key: %v", err)
-	}
-
-	// Compute shared secret
-	sharedSecret, err := crypto.ComputeSharedSecret(keyPair.PrivateKey, peerPubKey)
-	if err != nil {
-		log.Fatalf("Failed to compute shared secret: %v", err)
-	}
-
-	// Derive session keys
-	isInitiator := cfg.Mode == config.ModeClient
-	sendKey, recvKey, err := crypto.DeriveSessionKeys(sharedSecret, isInitiator)
-	if err != nil {
-		log.Fatalf("Failed to derive session keys: %v", err)
-	}
-
-	// Create cipher
-	cipher, err := crypto.NewCipher(sendKey, recvKey)
-	if err != nil {
-		log.Fatalf("Failed to create cipher: %v", err)
-	}
-
-	log.Printf("Crypto initialized successfully")
-	log.Printf("Local public key: %s", keyPair.PublicKeyBase64())
-
-	// Setup signal handler
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	// Run based on mode
-	switch cfg.Mode {
-	case config.ModeClient:
-		runClient(cfg, cipher, sigCh)
-	case config.ModeServer:
-		runServer(cfg, cipher, sigCh)
+	if err := mainCmd.Execute(); err != nil {
+		panic(err)
 	}
 }
 
 func runClient(cfg *config.Config, cipher *crypto.Cipher, sigCh chan os.Signal) {
-	log.Printf("Starting client mode...")
-	log.Printf("SOCKS5 proxy: %s", cfg.GetListenAddr())
-	log.Printf("Server: %s", cfg.GetServerAddr())
-	log.Printf("Spoof source IP: %s", cfg.Spoof.SourceIP)
+	fmt.Printf("%-30s %s\n", "SOCKS5 proxy:", cfg.GetListenAddr())
+	fmt.Printf("%-30s %s\n", "Server:", cfg.GetServerAddr())
+	fmt.Printf("%-30s %s\n", "Spoof source IP:", cfg.Spoof.SourceIP)
 	if cfg.Spoof.PeerSpoofIP != "" {
-		log.Printf("Expected server spoof IP: %s", cfg.Spoof.PeerSpoofIP)
+		fmt.Printf("%-30s %s\n", "Expected server spoof IP:", cfg.Spoof.PeerSpoofIP)
 	}
+
+	fmt.Println()
+	log.Printf(blue("Starting client mode..."))
 
 	client, err := tunnel.NewClient(cfg, cipher)
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		log.Printf(red("Failed to create client"))
+		log.Printf(red(err))
+		return
 	}
 
 	// Start client in goroutine
@@ -154,16 +170,20 @@ func runClient(cfg *config.Config, cipher *crypto.Cipher, sigCh chan os.Signal) 
 }
 
 func runServer(cfg *config.Config, cipher *crypto.Cipher, sigCh chan os.Signal) {
-	log.Printf("Starting server mode...")
-	log.Printf("Listening on port: %d", cfg.Listen.Port)
-	log.Printf("Spoof source IP: %s", cfg.Spoof.SourceIP)
+	fmt.Printf("%-30s %d\n", "Listening on port:", cfg.Listen.Port)
+	fmt.Printf("%-30s %s\n", "Spoof source IP:", cfg.Spoof.SourceIP)
 	if cfg.Spoof.PeerSpoofIP != "" {
-		log.Printf("Expected client spoof IP: %s", cfg.Spoof.PeerSpoofIP)
+		fmt.Printf("%-30s %s\n", "Expected client spoof IP:", cfg.Spoof.PeerSpoofIP)
 	}
+
+	fmt.Println()
+	log.Printf(blue("Starting server mode..."))
 
 	server, err := tunnel.NewServer(cfg, cipher)
 	if err != nil {
-		log.Fatalf("Failed to create server: %v", err)
+		log.Printf(red("Failed to create server"))
+		log.Printf(red(err))
+		return
 	}
 
 	// Start server in goroutine
@@ -189,36 +209,4 @@ func runServer(cfg *config.Config, cipher *crypto.Cipher, sigCh chan os.Signal) 
 	// Print stats
 	sent, received, sessions := server.Stats()
 	log.Printf("Stats: sent=%d bytes, received=%d bytes, active_sessions=%d", sent, received, sessions)
-}
-
-func generateKeys() {
-	keyPair, err := crypto.GenerateKeyPair()
-	if err != nil {
-		log.Fatalf("Failed to generate keys: %v", err)
-	}
-
-	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                    GENERATED KEY PAIR                          ║")
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
-	fmt.Printf("║ Private Key: %-50s ║\n", keyPair.PrivateKeyBase64())
-	fmt.Printf("║ Public Key:  %-50s ║\n", keyPair.PublicKeyBase64())
-	fmt.Println("╠════════════════════════════════════════════════════════════════╣")
-	fmt.Println("║ INSTRUCTIONS:                                                  ║")
-	fmt.Println("║ 1. Add private_key to YOUR config.json                         ║")
-	fmt.Println("║ 2. Share public_key with your PEER                             ║")
-	fmt.Println("║ 3. Add peer's public_key to your peer_public_key               ║")
-	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
-}
-
-func setupLogging(cfg *config.Config) {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
-
-	if cfg.Logging.File != "" {
-		f, err := os.OpenFile(cfg.Logging.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Printf("Warning: could not open log file: %v", err)
-		} else {
-			log.SetOutput(f)
-		}
-	}
 }

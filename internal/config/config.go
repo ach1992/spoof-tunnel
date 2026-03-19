@@ -316,7 +316,7 @@ func (c *Config) Validate() error {
 
 	// Crypto validation
 	if c.Crypto.PrivateKey == "" {
-		errs = append(errs, "crypto.private_key is required (generate with: ./spoof generate-keys)")
+		errs = append(errs, "crypto.private_key is required (generate with: ./spoof keygen)")
 	}
 	if c.Crypto.PeerPublicKey == "" {
 		errs = append(errs, "crypto.peer_public_key is required")

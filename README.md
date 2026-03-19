@@ -97,7 +97,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o spoof ./cmd/s
 Before starting the tunnel, you need to generate a pair of Base64 private/public keys for both the server and the client.
 
 ```bash
-./spoof generate-keys
+./spoof keygen
 ```
 *Take note of the Private Key and Public Key.* The Server's Public Key must be placed in the Client's `peer_public_key` field, and the Client's Public Key must be placed in the Server's `peer_public_key` field.
 
@@ -106,59 +106,79 @@ Before starting the tunnel, you need to generate a pair of Base64 private/public
 
 **On the Server:**
 ```bash
-sudo ./spoof server -c server-config.json
+sudo ./spoof -c server-config.json
 ```
 
 **On the Client:**
 ```bash
-sudo ./spoof client -c client-config.json
+sudo ./spoof -c client-config.json
 ```
 Once the client connects, it will open a SOCKS5 proxy on `127.0.0.1:1080` (by default) that securely routes through the spoofed tunnel.
 
 ---
 
-## Configuration File Parameters (`config.json`)
+## Client Config
 
-Here is a detailed breakdown of the `config.json` parameters required to operate the tunnel:
+| Section      | Key                     | Type    | Description                                                                 |
+|--------------|-------------------------|---------|-----------------------------------------------------------------------------|
+| mode         | mode                    | string  | Must be "client"                                                            |
+| transport    | type                    | string  | "udp" or "icmp" (tunnel transport)                                          |
+| transport    | icmp_mode               | string  | "echo" or "reply" (only for ICMP)                                           |
+| transport    | protocol_number         | int     | 0 (default, unused for ICMP/UDP)                                            |
+| listen       | address                 | string  | SOCKS5 listening address (127.0.0.1)                                        |
+| listen       | port                    | int     | SOCKS5 listening port (1080)                                                |
+| server       | address                 | string  | Remote server actual IP to send tunnel packets to                           |
+| server       | port                    | int     | Remote server port (for UDP)                                                |
+| spoof        | source_ip               | string  | IP this client claims when sending outbound packets                         |
+| spoof        | peer_spoof_ip           | string  | Expected spoofed source IP of incoming server packets (used by BPF filter)  |
+| crypto       | private_key             | string  | Client's Base64 private key (from ./spoof keygen)                           |
+| crypto       | peer_public_key         | string  | Server's Base64 public key                                                  |
+| performance  | buffer_size             | int     | Main packet buffer size                                                     |
+| performance  | mtu                     | int     | Max payload before encapsulation (e.g. 1400)                                |
+| performance  | session_timeout         | int     | Master session timeout in seconds                                           |
+| performance  | workers                 | int     | Number of packet processing goroutines                                      |
+| performance  | read_buffer             | int     | Kernel socket read buffer size                                              |
+| performance  | write_buffer            | int     | Kernel socket write buffer size                                             |
+| fec          | enabled                 | bool    | true = enable Reed-Solomon Forward Error Correction                         |
+| fec          | data_shards             | int     | Number of real data shards                                                  |
+| fec          | parity_shards           | int     | Number of parity shards (recover up to this many lost packets)              |
+| logging      | level                   | string  | "info", "debug", "warn", or "error"                                         |
+| logging      | file                    | string  | Log file path (empty = stdout)                                              |
 
-| Key Category/Path | Type | Description |
-| :--- | :--- | :--- |
-| `mode` | String | `"client"` or `"server"`. Dictates the operational mode of the binary. |
-| **`transport`** | | |
-| `transport.type` | String | `"udp"` or `"icmp"`. The underlying protocol used for the tunnel. |
-| `transport.icmp_mode` | String | `"echo"` or `"reply"`. Used when type is ICMP. |
-| **`listen`** | | |
-| `listen.address` | String | **Client**: SOCKS5 bind address (e.g., `127.0.0.1`).<br>**Server**: The IP address where the server expects the tunnel traffic to arrive. |
-| `listen.port` | Integer| **Client**: SOCKS5 bind port (e.g., `1080`).<br>**Server**: The tunnel listening port (only applicable for UDP mode). |
-| **`server`** | | |
-| `server.address` | String | **Client only**: The actual remote server IP address to send packets to. |
-| `server.port` | Integer| **Client only**: The remote server port to send packets to. |
-| **`spoof`** | | |
-| `spoof.source_ip` | String | The IP address this node will claim to be when sending outbound packets. |
-| `spoof.peer_spoof_ip` | String | The specific expected fake source IP of the incoming packets from the peer. Used by the BPF filter to capture the tunnel traffic. |
-| **`crypto`** | | |
-| `crypto.private_key`| String | The node's private key (Base64) generated via `generate-keys`. |
-| `crypto.peer_public_key`| String| The peer's public key (Base64). Client puts Server's public key here, and vice versa. |
-| **`performance`** | | |
-| `performance.buffer_size` | Integer | Buffer size |
-| `performance.read_buffer` | Integer | |
-| `performance.write_buffer` | Integer | |
-| `performance.mtu` | Integer| Maximum payload sizing before tunnel encapsulation. Crucial to adjust down (e.g., `1300` or `1400`) to avoid Layer 3 IP fragmentation. |
-| `performance.session_timeout` | Integer| General session timeout duration in seconds. |
-| `performance.workers` | Integer| Number of concurrent packet processing workers. |
-| **`fec`** | | |
-| `fec.enabled` | Boolean | enable or disable the fec(true/false) | 
-| `fec.data_shards` | Integer | real data |
-| `fec.parity_shards` | Integer | trash data |
-| **`reliability`** | | |
-| `reliability.enabled` | Boolean| Set to `true` to enable the custom TCP-like delivery layer. |
-| `reliability.window_size` | Integer| Maximum number of unacknowledged packets allowed in-flight simultaneously. |
-| `reliability.retransmit_timeout_ms`| Integer| Base milliseconds to wait before triggering a packet retransmission. |
-| `reliability.max_retries` | Integer| Maximum number of times to re-send a dropped packet before giving up. |
-| `reliability.ack_interval_ms` | Integer| How frequently (in ms) to piggyback or send pending ACKs. |
-| **`keepalive`** | | |
-| `keepalive.enabled` | Boolean| Enables periodic pinging to keep the NAT/State table (if any) and tunnel session alive. |
-| `keepalive.interval_seconds` | Integer| Interval between ping packets. |
-| `keepalive.timeout_seconds` | Integer| Time without activity before dropping the master session. |
+## Server Config
 
-
+| Section      | Key                     | Type    | Description                                                                 |
+|--------------|-------------------------|---------|-----------------------------------------------------------------------------|
+| mode         | mode                    | string  | Must be "server"                                                            |
+| transport    | type                    | string  | "udp" or "icmp" (tunnel transport)                                          |
+| transport    | icmp_mode               | string  | "echo" or "reply" (only for ICMP)                                           |
+| transport    | protocol_number         | int     | 0 (default, unused for ICMP/UDP)                                            |
+| listen       | address                 | string  | Tunnel listening IP (0.0.0.0 for all interfaces)                            |
+| listen       | port                    | int     | UDP listening port (ignored for ICMP)                                       |
+| spoof        | source_ip               | string  | IP this server claims when sending outbound packets                         |
+| spoof        | source_ipv6             | string  | IPv6 version of source_ip (leave empty if unused)                           |
+| spoof        | peer_spoof_ip           | string  | Expected spoofed source IP of incoming client packets (used by BPF filter)  |
+| spoof        | peer_spoof_ipv6         | string  | IPv6 version of peer_spoof_ip                                               |
+| spoof        | client_real_ip          | string  | Client's actual real IP (server routes replies here)                        |
+| spoof        | client_real_ipv6        | string  | IPv6 version of client_real_ip                                              |
+| crypto       | private_key             | string  | Server's Base64 private key (from ./spoof keygen)                           |
+| crypto       | peer_public_key         | string  | Client's Base64 public key                                                  |
+| performance  | buffer_size             | int     | Main packet buffer size                                                     |
+| performance  | mtu                     | int     | Max payload before encapsulation (e.g. 1400)                                |
+| performance  | session_timeout         | int     | Master session timeout in seconds                                           |
+| performance  | workers                 | int     | Number of packet processing goroutines                                      |
+| performance  | read_buffer             | int     | Kernel socket read buffer size                                              |
+| performance  | write_buffer            | int     | Kernel socket write buffer size                                             |
+| reliability  | enabled                 | bool    | true = enable custom TCP-like reliability layer                             |
+| reliability  | window_size             | int     | Max unacknowledged packets in flight                                        |
+| reliability  | retransmit_timeout_ms   | int     | Base retransmission timeout (ms)                                            |
+| reliability  | max_retries             | int     | Max retransmission attempts per packet                                      |
+| reliability  | ack_interval_ms         | int     | How often to send ACKs (ms)                                                 |
+| fec          | enabled                 | bool    | true = enable Reed-Solomon Forward Error Correction                         |
+| fec          | data_shards             | int     | Number of real data shards                                                  |
+| fec          | parity_shards           | int     | Number of parity shards (recover up to this many lost packets)              |
+| keepalive    | enabled                 | bool    | true = send periodic keepalive pings                                        |
+| keepalive    | interval_seconds        | int     | Seconds between keepalive packets                                           |
+| keepalive    | timeout_seconds         | int     | Session drop timeout if no activity                                         |
+| logging      | level                   | string  | "info", "debug", "warn", or "error"                                         |
+| logging      | file                    | string  | Log file path (empty = stdout)                                              |
