@@ -4,7 +4,7 @@
 >
 > This document is a cleaned-up and expanded English README for the project. It focuses on installation, configuration, service management, logging, and troubleshooting on **Ubuntu/Debian**. It intentionally avoids guidance for using the software against networks or policies you do not own or administer.
 
-[فارسی / Persian](README-fa.complete.md)
+[فارسی / Persian](README-fa.md)
 
 ## What this project is
 
